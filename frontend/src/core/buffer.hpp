@@ -102,6 +102,20 @@ public:
     bool empty() const {
         return buffer.empty();
     }
+    // Preserve converted characters while cancelling unfinished phonetic input.
+    bool discard_unconverted() {
+        std::lock_guard lock(mutex);
+        bool removed = false;
+        for (int i = static_cast<int>(buffer.size()) - 1; i >= 0; --i) {
+            if (!buffer[i].is_compositable()) {
+                buffer.erase(buffer.begin() + i);
+                if (i <= idx) --idx;
+                removed = true;
+            }
+        }
+        if (removed) invalidate_all_predictions();
+        return removed;
+    }
     bool current_invalid() const {
         return idx >= 0 && idx < static_cast<int>(buffer.size()) && buffer[idx].is_invalid();
     }

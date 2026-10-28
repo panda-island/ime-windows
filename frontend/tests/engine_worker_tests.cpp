@@ -162,6 +162,25 @@ private:
     std::wstring path_;
 };
 
+void discard_unconverted_test() {
+    tsf::CompositionBuffer buffer;
+    buffer.add(u'ㄅ');
+    require(buffer.discard_unconverted(), "unfinished reading was not removed");
+    require(buffer.empty(), "unfinished reading survived cancellation");
+    buffer.add_chosen_candidate(U'中');
+    buffer.add(u'ㄅ');
+    buffer.add_chosen_candidate(U'文');
+    require(buffer.discard_unconverted(), "middle unfinished reading survived");
+    require(buffer.to_string() == u"中文", "converted characters were deleted");
+    require(buffer.caret_offset() == 2, "caret did not follow retained text");
+    require(!buffer.discard_unconverted(), "converted text was treated as unfinished");
+    buffer.add(u'ㄆ');
+    buffer.pre();
+    require(buffer.discard_unconverted(), "reading after caret survived");
+    require(buffer.to_string() == u"中文", "text before caret was damaged");
+    require(buffer.caret_offset() == 2, "caret moved when deleting after it");
+}
+
 void cancellation_test() {
     const auto path = L"\\\\.\\pipe\\llavon-worker-test-" + std::to_wstring(GetCurrentProcessId());
     const HANDLE server = CreateNamedPipeW(path.c_str(), PIPE_ACCESS_DUPLEX,
@@ -186,6 +205,7 @@ int main() {
     try {
         queue_and_snapshot_test();
         cancellation_test();
+        discard_unconverted_test();
         return 0;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "%s\n", error.what());

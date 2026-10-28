@@ -490,6 +490,21 @@ std::optional<std::u16string> shifted_printable_symbol_text(WPARAM wParam, LPARA
     return printable_key_text(wParam, lParam);
 }
 
+// Keys shared with Bopomofo must still start phonetic input normally.
+// Shift symbols are punctuation even though Shift also enables temporary English.
+bool idle_punctuation_key(WPARAM wParam, LPARAM lParam) {
+    if (key_down(VK_MENU)) return false;
+    if (shifted_printable_symbol_text(wParam, lParam)) return true;
+    if (key_down(VK_CONTROL) || modifier_key(wParam) ||
+        Bopomofo::lookup(static_cast<int>(wParam))) return false;
+    const auto text = printable_key_text(wParam, lParam);
+    if (!text) return false;
+    return std::ranges::any_of(*text, [](char16_t ch) {
+        return (ch >= u'!' && ch <= u'/') || (ch >= u':' && ch <= u'@') ||
+               (ch >= u'[' && ch <= u'`') || (ch >= u'{' && ch <= u'~');
+    });
+}
+
 std::optional<std::u16string> punctuation_shortcut(WPARAM wParam) {
     if (!key_down(VK_CONTROL) || key_down(VK_MENU) || modifier_key(wParam)) {
         return std::nullopt;
@@ -1094,8 +1109,14 @@ STDMETHODIMP TextService::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPA
 
     // Holding Shift in Chinese mode is temporary English input. Treat it as
     // the regular English mode so both cases follow the same key path.
-    const bool english_mode =
-        read_backend_input_mode() == InputMode::English || key_down(VK_SHIFT);
+    const bool backend_english = read_backend_input_mode() == InputMode::English;
+    const bool english_mode = backend_english || key_down(VK_SHIFT);
+    if (!backend_english &&
+        !(composition_belongs_to(pContext) && !compositionBuffer.empty()) &&
+        (punctuation_shortcut(wParam) || idle_punctuation_key(wParam, lParam))) {
+        *pfEaten = TRUE;
+        return S_OK;
+    }
     if (!english_mode && backtick_shortcut_key(wParam)) {
         *pfEaten = TRUE;
         return S_OK;
@@ -1253,8 +1274,15 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     e2e_trace.mode_started = std::chrono::steady_clock::now();
     // Keep this in sync with OnTestKeyDown: temporary Shift-English input must
     // take exactly the same handling path as the regular English mode.
-    const bool english_mode =
-        read_backend_input_mode() == InputMode::English || key_down(VK_SHIFT);
+    const bool backend_english = read_backend_input_mode() == InputMode::English;
+    const bool english_mode = backend_english || key_down(VK_SHIFT);
+    if (!backend_english &&
+        !(composition_belongs_to(pContext) && !compositionBuffer.empty()) &&
+        (punctuation_shortcut(wParam) || idle_punctuation_key(wParam, lParam))) {
+        backtick_used_as_modifier_ = false;
+        *pfEaten = TRUE;
+        return S_OK;
+    }
     e2e_trace.mode_finished = std::chrono::steady_clock::now();
     if (!english_mode && backtick_shortcut_key(wParam) && !backtick_used_as_modifier_) {
         backtick_used_as_modifier_ = true;
@@ -1464,10 +1492,26 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
  *
  * Leaves key-up events unconsumed after key-down handling.
  */
-STDMETHODIMP TextService::OnKeyUp(ITfContext* /*pContext*/, WPARAM wParam, LPARAM /*lParam*/, BOOL* pfEaten) try {
+STDMETHODIMP TextService::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM /*lParam*/, BOOL* pfEaten) try {
     if (!pfEaten) return E_INVALIDARG;
     if (shift_key(wParam) && shift_toggle_pending_) {
         if (!shift_used_as_modifier_) {
+            if (context_accepts_input(pContext) && composition_belongs_to(pContext) &&
+                read_backend_input_mode() == InputMode::Chinese) {
+                invalidate_prediction();
+                candidate_ui_->hide();
+                compositionBuffer.discard_unconverted();
+                const HRESULT hr = compositionBuffer.empty()
+                    ? discard_composition(pContext)
+                    : set_composition_text(pContext, compositionBuffer.to_string());
+                if (FAILED(hr)) {
+                    shift_toggle_pending_ = false;
+                    shift_used_as_modifier_ = false;
+                    *pfEaten = TRUE;
+                    return hr;
+                }
+            }
+            backtick_used_as_modifier_ = false;
             if (engine_worker_) engine_worker_->toggle_input_mode();
             refresh_input_mode_indicator();
         }
