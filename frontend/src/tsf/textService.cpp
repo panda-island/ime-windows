@@ -16,6 +16,7 @@
 
 #include "candidateUiController.hpp"
 #include "core/bopomofo.hpp"
+#include "core/punctuation_policy.hpp"
 #include "editSession.hpp"
 #include "engine/engine.hpp"
 #include "engine/engine_worker.hpp"
@@ -1111,9 +1112,11 @@ STDMETHODIMP TextService::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPA
     // the regular English mode so both cases follow the same key path.
     const bool backend_english = read_backend_input_mode() == InputMode::English;
     const bool english_mode = backend_english || key_down(VK_SHIFT);
-    if (!backend_english &&
-        !(composition_belongs_to(pContext) && !compositionBuffer.empty()) &&
-        (punctuation_shortcut(wParam) || idle_punctuation_key(wParam, lParam))) {
+    if (blocks_idle_punctuation(
+            backend_english,
+            composition_belongs_to(pContext) && compositionBuffer.has_phonetic_input(),
+            punctuation_shortcut(wParam).has_value(),
+            idle_punctuation_key(wParam, lParam))) {
         *pfEaten = TRUE;
         return S_OK;
     }
@@ -1276,9 +1279,11 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // take exactly the same handling path as the regular English mode.
     const bool backend_english = read_backend_input_mode() == InputMode::English;
     const bool english_mode = backend_english || key_down(VK_SHIFT);
-    if (!backend_english &&
-        !(composition_belongs_to(pContext) && !compositionBuffer.empty()) &&
-        (punctuation_shortcut(wParam) || idle_punctuation_key(wParam, lParam))) {
+    if (blocks_idle_punctuation(
+            backend_english,
+            composition_belongs_to(pContext) && compositionBuffer.has_phonetic_input(),
+            punctuation_shortcut(wParam).has_value(),
+            idle_punctuation_key(wParam, lParam))) {
         backtick_used_as_modifier_ = false;
         *pfEaten = TRUE;
         return S_OK;
@@ -1295,6 +1300,11 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     auto punctuation = punctuation_shortcut(wParam);
     if (!punctuation && !english_mode) punctuation = multifuntional_shortcut(wParam);
     if (punctuation) {
+        // Enforce at the output boundary too, including backtick shortcuts.
+        if (!compositionBuffer.has_phonetic_input()) {
+            *pfEaten = TRUE;
+            return S_OK;
+        }
         compositionBuffer.add_chosen_candidate((*punctuation)[0]);
         set_composition_text(pContext, compositionBuffer.to_string());
         *pfEaten = TRUE;

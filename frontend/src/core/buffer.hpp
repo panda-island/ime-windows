@@ -116,6 +116,12 @@ public:
         if (removed) invalidate_all_predictions();
         return removed;
     }
+    bool has_phonetic_input() const {
+        for (const auto& item : buffer) {
+            if (!item.to_bopomofo_string().empty()) return true;
+        }
+        return false;
+    }
     bool current_invalid() const {
         return idx >= 0 && idx < static_cast<int>(buffer.size()) && buffer[idx].is_invalid();
     }

@@ -33,9 +33,9 @@ constexpr std::uint64_t current_build = LLAVON_IME_BUILD_NUMBER;
 constexpr wchar_t current_commit[] = LLAVON_WIDEN(LLAVON_IME_BUILD_COMMIT);
 constexpr wchar_t current_version[] = LLAVON_WIDEN(LLAVON_IME_VERSION);
 constexpr wchar_t latest_manifest_url[] =
-    L"https://github.com/llavon-ime/ime-windows/releases/download/latest/latest.json";
+    L"https://github.com/panda-island/ime-windows/releases/download/latest/latest.json";
 constexpr wchar_t latest_release_url[] =
-    L"https://github.com/llavon-ime/ime-windows/releases/tag/latest";
+    L"https://github.com/panda-island/ime-windows/releases/tag/latest";
 constexpr auto update_timeout = std::chrono::seconds(2);
 constexpr double largest_exact_json_integer = 9007199254740991.0;
 
@@ -129,7 +129,7 @@ bool is_sha256(std::wstring_view value) noexcept {
 
 bool is_release_setup_url(std::wstring_view url, std::wstring_view version) {
     const std::wstring prefix =
-        L"https://github.com/llavon-ime/ime-windows/releases/download/v" +
+        L"https://github.com/panda-island/ime-windows/releases/download/v" +
         std::wstring(version) + L"/";
     if (!url.starts_with(prefix)) return false;
     const auto filename = url.substr(prefix.size());

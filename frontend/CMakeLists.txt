@@ -122,6 +122,10 @@ install(TARGETS llavon-ime
 )
 
 if(BUILD_TESTING)
+    add_executable(frontend-punctuation-policy-tests tests/punctuation_policy_tests.cpp)
+    target_compile_features(frontend-punctuation-policy-tests PRIVATE cxx_std_23)
+    add_test(NAME frontend-punctuation-policy COMMAND frontend-punctuation-policy-tests)
+
     add_executable(frontend-engine-worker-tests tests/engine_worker_tests.cpp)
     target_compile_features(frontend-engine-worker-tests PRIVATE cxx_std_23)
     target_compile_definitions(frontend-engine-worker-tests PRIVATE
