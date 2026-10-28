@@ -496,7 +496,7 @@ bool idle_punctuation_key(WPARAM wParam, LPARAM lParam) {
     if (key_down(VK_MENU)) return false;
     if (shifted_printable_symbol_text(wParam, lParam)) return true;
     if (key_down(VK_CONTROL) || modifier_key(wParam) ||
-        Bopomofo::lookup(static_cast<int>(wParam))) return false;
+        tsf::Bopomofo::lookup(static_cast<int>(wParam))) return false;
     const auto text = printable_key_text(wParam, lParam);
     if (!text) return false;
     return std::ranges::any_of(*text, [](char16_t ch) {
