@@ -16,7 +16,6 @@
 
 #include "candidateUiController.hpp"
 #include "core/bopomofo.hpp"
-#include "core/punctuation_policy.hpp"
 #include "editSession.hpp"
 #include "engine/engine.hpp"
 #include "engine/engine_worker.hpp"
@@ -491,21 +490,6 @@ std::optional<std::u16string> shifted_printable_symbol_text(WPARAM wParam, LPARA
     return printable_key_text(wParam, lParam);
 }
 
-// Keys shared with Bopomofo must still start phonetic input normally.
-// Shift symbols are punctuation even though Shift also enables temporary English.
-bool idle_punctuation_key(WPARAM wParam, LPARAM lParam) {
-    if (key_down(VK_MENU)) return false;
-    if (shifted_printable_symbol_text(wParam, lParam)) return true;
-    if (key_down(VK_CONTROL) || modifier_key(wParam) ||
-        tsf::Bopomofo::lookup(static_cast<int>(wParam))) return false;
-    const auto text = printable_key_text(wParam, lParam);
-    if (!text) return false;
-    return std::ranges::any_of(*text, [](char16_t ch) {
-        return (ch >= u'!' && ch <= u'/') || (ch >= u':' && ch <= u'@') ||
-               (ch >= u'[' && ch <= u'`') || (ch >= u'{' && ch <= u'~');
-    });
-}
-
 std::optional<std::u16string> punctuation_shortcut(WPARAM wParam) {
     if (!key_down(VK_CONTROL) || key_down(VK_MENU) || modifier_key(wParam)) {
         return std::nullopt;
@@ -698,11 +682,11 @@ HRESULT TextService::handle_com_exception(std::source_location location) noexcep
 }
 
 //FIXME: shouldn't be in tsf?
-std::optional<std::u16string> TextService::multifuntional_shortcut(WPARAM wParam) {
+std::optional<std::u16string> TextService::multifuntional_shortcut(WPARAM wParam, bool consume) {
     if (!backtick_used_as_modifier_ || key_down(VK_MENU) || modifier_key(wParam)) {
         return std::nullopt;
     }
-    backtick_used_as_modifier_ = false;
+    if (consume) backtick_used_as_modifier_ = false;
     //TODO: a UI and more keys(and user-defined?)
     switch (wParam) {
         case VK_OEM_COMMA:
@@ -1112,14 +1096,6 @@ STDMETHODIMP TextService::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPA
     // the regular English mode so both cases follow the same key path.
     const bool backend_english = read_backend_input_mode() == InputMode::English;
     const bool english_mode = backend_english || key_down(VK_SHIFT);
-    if (blocks_idle_punctuation(
-            backend_english,
-            composition_belongs_to(pContext) && compositionBuffer.has_phonetic_input(),
-            punctuation_shortcut(wParam).has_value(),
-            idle_punctuation_key(wParam, lParam))) {
-        *pfEaten = TRUE;
-        return S_OK;
-    }
     if (!english_mode && backtick_shortcut_key(wParam)) {
         *pfEaten = TRUE;
         return S_OK;
@@ -1139,7 +1115,7 @@ STDMETHODIMP TextService::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPA
         return S_OK;
     }
 
-    if (!english_mode && multifuntional_shortcut(wParam)) {
+    if (!english_mode && multifuntional_shortcut(wParam, false)) {
         *pfEaten = TRUE;
         return S_OK;
     }
@@ -1279,15 +1255,6 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // take exactly the same handling path as the regular English mode.
     const bool backend_english = read_backend_input_mode() == InputMode::English;
     const bool english_mode = backend_english || key_down(VK_SHIFT);
-    if (blocks_idle_punctuation(
-            backend_english,
-            composition_belongs_to(pContext) && compositionBuffer.has_phonetic_input(),
-            punctuation_shortcut(wParam).has_value(),
-            idle_punctuation_key(wParam, lParam))) {
-        backtick_used_as_modifier_ = false;
-        *pfEaten = TRUE;
-        return S_OK;
-    }
     e2e_trace.mode_finished = std::chrono::steady_clock::now();
     if (!english_mode && backtick_shortcut_key(wParam) && !backtick_used_as_modifier_) {
         backtick_used_as_modifier_ = true;
@@ -1300,11 +1267,6 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     auto punctuation = punctuation_shortcut(wParam);
     if (!punctuation && !english_mode) punctuation = multifuntional_shortcut(wParam);
     if (punctuation) {
-        // Enforce at the output boundary too, including backtick shortcuts.
-        if (!compositionBuffer.has_phonetic_input()) {
-            *pfEaten = TRUE;
-            return S_OK;
-        }
         compositionBuffer.add_chosen_candidate((*punctuation)[0]);
         set_composition_text(pContext, compositionBuffer.to_string());
         *pfEaten = TRUE;
@@ -1463,6 +1425,13 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
         candidate_ui_->hide();
         // TODO: Handle non-Bopomofo keys.
         *pfEaten = FALSE;
+        return S_OK;
+    }
+
+    if (Bopomofo::tone.contains(cur_char.value()) &&
+        !compositionBuffer.current_accepts_tone()) {
+        // Consume standalone tone keys without inserting them into the host.
+        *pfEaten = TRUE;
         return S_OK;
     }
 

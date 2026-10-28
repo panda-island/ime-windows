@@ -151,7 +151,7 @@ private:
     void forget_recent_commit() noexcept;
     void discard_recent_commit(ITfContext* context) noexcept;
     // Multifunctional shortcut handling
-    std::optional<std::u16string> multifuntional_shortcut(WPARAM wParam);
+    std::optional<std::u16string> multifuntional_shortcut(WPARAM wParam, bool consume = true);
 
     winrt::com_ptr<ITfThreadMgr> threadMgr;
     TfClientId _tfClientId = TF_CLIENTID_NULL;

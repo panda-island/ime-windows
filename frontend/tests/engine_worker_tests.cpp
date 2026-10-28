@@ -181,6 +181,30 @@ void discard_unconverted_test() {
     require(buffer.caret_offset() == 2, "caret moved when deleting after it");
 }
 
+void standalone_tone_test() {
+    tsf::CompositionBuffer buffer;
+    for (const char16_t tone : {u' ', u'ˊ', u'ˇ', u'ˋ', u'˙'}) {
+        buffer.add(tone);
+        require(buffer.empty(), "tone created a composition before Zhuyin");
+    }
+    buffer.add_chosen_candidate(U'，');
+    for (const char16_t tone : {u' ', u'ˊ', u'ˇ', u'ˋ', u'˙'}) {
+        buffer.add(tone);
+        require(buffer.to_string() == u"，", "tone was accepted after punctuation");
+    }
+    buffer.clear();
+    buffer.add(u'ㄅ');
+    require(buffer.current_accepts_tone(), "pending consonant rejected a tone");
+    buffer.pre();
+    require(!buffer.current_accepts_tone(), "tone allowed before the first syllable");
+    buffer.add(u'ˊ');
+    require(buffer.to_string() == u"ㄅ", "leading tone changed existing Zhuyin");
+    buffer.clear();
+    buffer.add_chosen_candidate(U'中');
+    buffer.add(u'ˊ');
+    require(buffer.to_string() == u"中", "tone created a syllable after converted text");
+}
+
 void cancellation_test() {
     const auto path = L"\\\\.\\pipe\\llavon-worker-test-" + std::to_wstring(GetCurrentProcessId());
     const HANDLE server = CreateNamedPipeW(path.c_str(), PIPE_ACCESS_DUPLEX,
@@ -205,6 +229,7 @@ int main() {
     try {
         queue_and_snapshot_test();
         cancellation_test();
+        standalone_tone_test();
         discard_unconverted_test();
         return 0;
     } catch (const std::exception& error) {

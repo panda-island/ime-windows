@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "bopomofo.hpp"
+#include "tone_policy.hpp"
 #include "engine/impl/engine.h"
 using namespace std::literals;
 
@@ -116,11 +117,11 @@ public:
         if (removed) invalidate_all_predictions();
         return removed;
     }
-    bool has_phonetic_input() const {
-        for (const auto& item : buffer) {
-            if (!item.to_bopomofo_string().empty()) return true;
-        }
-        return false;
+    bool current_accepts_tone() const {
+        if (idx < 0 || idx >= static_cast<int>(buffer.size())) return false;
+        const auto& item = buffer[idx];
+        return accepts_tone(item.initial, item.medial, item.final,
+                            item.is_compositable(), item.is_invalid());
     }
     bool current_invalid() const {
         return idx >= 0 && idx < static_cast<int>(buffer.size()) && buffer[idx].is_invalid();
@@ -157,6 +158,7 @@ public:
     }
     void add(char16_t ch) {
         std::lock_guard lock(mutex);
+        if (Bopomofo::tone.contains(ch) && !current_accepts_tone()) return;
         if (idx >= 0 && idx < static_cast<int>(buffer.size()) && buffer[idx].is_invalid()) {
             buffer.erase(buffer.begin() + idx);
             idx--;
