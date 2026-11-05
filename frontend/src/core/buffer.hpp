@@ -159,9 +159,10 @@ public:
     void add(char16_t ch) {
         std::lock_guard lock(mutex);
         if (Bopomofo::tone.contains(ch) && !current_accepts_tone()) return;
-        if (idx >= 0 && idx < static_cast<int>(buffer.size()) && buffer[idx].is_invalid()) {
-            buffer.erase(buffer.begin() + idx);
-            idx--;
+        if (current_invalid()) {
+            // A failed lookup leaves a tone on the syllable. Remove that tone
+            // so accept() can replace the matching phonetic component in place.
+            buffer[idx].pop_last_bopomofo();
         }
         if (idx == -1 || !buffer[idx].accept(ch)) {
             idx++;

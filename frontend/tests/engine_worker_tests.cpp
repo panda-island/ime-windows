@@ -6,6 +6,7 @@
 #include <future>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 using namespace std::chrono_literals;
 
@@ -205,6 +206,40 @@ void standalone_tone_test() {
     require(buffer.to_string() == u"中", "tone created a syllable after converted text");
 }
 
+void repair_invalid_syllable_test() {
+    struct Case {
+        char16_t key;
+        std::u16string_view corrected;
+    };
+    constexpr Case cases[] = {
+        {u'ㄏ', u"ㄏㄨㄥ"},
+        {u'ㄧ', u"ㄎㄧㄥ"},
+        {u'ㄤ', u"ㄎㄨㄤ"},
+    };
+    for (const auto& entry : cases) {
+        tsf::CompositionBuffer buffer;
+        buffer.add_chosen_candidate(U'，');
+        buffer.add_chosen_candidate(U'。');
+        buffer.pre();
+
+        buffer.add(u'ㄎ');
+        buffer.add(u'ㄨ');
+        buffer.add(u'ㄥ');
+        // Reproduce a failed lookup without depending on a dictionary file.
+        buffer.cur().tone = u'ˊ';
+        buffer.cur().invalid = true;
+        buffer.add(entry.key);
+
+        std::u16string expected = u"，";
+        expected += entry.corrected;
+        expected += u"。";
+        require(buffer.to_string() == expected, "repair did not preserve the other symbols");
+        require(!buffer.current_invalid_span(), "repaired syllable remained marked invalid");
+        require(buffer.current_accepts_tone(), "repaired syllable did not accept a new tone");
+        require(buffer.caret_offset() == 4, "repair moved the caret away from the syllable");
+    }
+}
+
 void cancellation_test() {
     const auto path = L"\\\\.\\pipe\\llavon-worker-test-" + std::to_wstring(GetCurrentProcessId());
     const HANDLE server = CreateNamedPipeW(path.c_str(), PIPE_ACCESS_DUPLEX,
@@ -230,6 +265,7 @@ int main() {
         queue_and_snapshot_test();
         cancellation_test();
         standalone_tone_test();
+        repair_invalid_syllable_test();
         discard_unconverted_test();
         return 0;
     } catch (const std::exception& error) {
