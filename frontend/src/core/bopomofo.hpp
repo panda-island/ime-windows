@@ -259,11 +259,10 @@ private:
             std::vector<char32_t> wvec;
             for (const auto& item : v) {
                 char32_t hanzi = utf8::utf8to32(item)[0];
-                if (!is_traditional_character(hanzi)) continue;
                 wvec.push_back(hanzi);
                 hanzi_set.insert(hanzi);
             }
-            if (!wvec.empty()) mapping[key] = std::move(wvec);
+            if (!wvec.empty()) mapping[key] = traditional_first_candidates(wvec);
         }
         auto phrase_file = mapping_file.parent_path() / "phrases.tsv";
         if (!std::filesystem::exists(phrase_file)) {
@@ -281,9 +280,7 @@ private:
             while (begin < line.size()) {
                 const auto end = line.find('\t', begin);
                 auto word = utf8::utf8to32(line.substr(begin, end - begin));
-                if (std::all_of(word.begin(), word.end(), is_traditional_character)) {
-                    phrases_.add(reading_key, std::move(word));
-                }
+                phrases_.add(reading_key, std::move(word));
                 if (end == std::string::npos) break;
                 begin = end + 1;
             }
@@ -340,7 +337,7 @@ struct BopomofoPos {
         if (!is_compositable()) {
             throw std::logic_error("not compositable");
         }
-        return to_traditional_character(candidates.at(choose_index));
+        return candidates.at(choose_index);
     }
 
 public:
@@ -365,7 +362,6 @@ public:
         return invalid;
     }
     void set_chosen_candidate(char32_t ch) {
-        ch = to_traditional_character(ch);
         initial = 0;
         medial = 0;
         final = 0;
@@ -386,7 +382,6 @@ public:
         manually_selected = true;
     }
     void choose_candidate(char32_t ch) {
-        ch = to_traditional_character(ch);
         const auto candidate = std::find(candidates.begin(), candidates.end(), ch);
         if (candidate == candidates.end()) {
             candidates.insert(candidates.begin(), ch);
@@ -404,13 +399,7 @@ public:
         return candidates;
     }
     std::vector<char32_t> selection_candidates() const {
-        std::vector<char32_t> result;
-        for (const auto raw : get_candidates()) {
-            const auto character = to_traditional_character(raw);
-            if (std::find(result.begin(), result.end(), character) == result.end()) {
-                result.push_back(character);
-            }
-        }
+        auto result = get_candidates();
         // Model token coverage must not remove valid manual alternatives.
         if (const auto* local = HanziMapEngine::instance().lookup_all(to_bopomofo_string())) {
             for (const auto character : *local) {
@@ -419,22 +408,22 @@ public:
                 }
             }
         }
-        return result;
+        return traditional_first_candidates(result);
     }
     bool was_manually_selected() const noexcept {
         return manually_selected;
     }
     void set_candaiates(const std::vector<char32_t>& nc) {
-        std::vector<char32_t> filtered;
-        for (const char32_t raw : nc) {
-            const auto candidate = to_traditional_character(raw);
-            if (std::find(filtered.begin(), filtered.end(), candidate) == filtered.end()) {
-                filtered.push_back(candidate);
-            }
+        std::vector<char32_t> combined(nc);
+        // A model with incomplete token coverage must not put a simplified
+        // character ahead of a traditional alternative in the local table.
+        if (const auto* local = HanziMapEngine::instance().lookup_all(to_bopomofo_string())) {
+            combined.insert(combined.end(), local->begin(), local->end());
+        } else {
+            combined.insert(combined.end(), candidates.begin(), candidates.end());
         }
-        // Keep the local traditional fallback if every prediction was excluded.
-        if (!filtered.empty()) {
-            candidates = std::move(filtered);
+        if (!combined.empty()) {
+            candidates = traditional_first_candidates(combined);
             choose_index = 0;
         }
     }

@@ -1,5 +1,5 @@
 #pragma once
-#include "../../../shared/traditional_characters.hpp"
+#include "../../../shared/candidate_policy.hpp"
 
 #include <algorithm>
 #include <span>
@@ -8,7 +8,17 @@
 
 namespace llavon::service {
 
-// The legacy pipe client has no script filter. Sanitize the final wire payload
+inline void apply_custom_name_candidate(std::vector<std::pair<char32_t, float>>& candidates,
+                                        char32_t character) {
+    if (linguistic::is_traditional_character(character)) {
+        candidates = {{character, 1.0F}};
+    } else {
+        std::erase_if(candidates, [character](const auto& candidate) { return candidate.first == character; });
+        candidates.insert(candidates.begin(), {character, 1.0F});
+    }
+}
+
+// Apply the same script preference to both legacy and current pipe clients,
 // after model output, custom names and remembered selections have been applied.
 inline std::vector<char32_t> traditional_response_candidates(
     std::span<const std::pair<char32_t, float>> candidates) {
@@ -16,12 +26,9 @@ inline std::vector<char32_t> traditional_response_candidates(
     result.reserve(candidates.size());
     for (const auto& [raw, probability] : candidates) {
         (void)probability;
-        const auto character = linguistic::to_traditional_character(raw);
-        if (std::find(result.begin(), result.end(), character) == result.end()) {
-            result.push_back(character);
-        }
+        result.push_back(raw);
     }
-    return result;
+    return linguistic::traditional_first_candidates(result);
 }
 
 }  // namespace llavon::service

@@ -1,4 +1,4 @@
-"""Generate traditional-only filtering and phrase data from pinned source checkouts.
+"""Generate script classification and traditional-first phrase data from pinned sources.
 
 Usage: python tools/generate_linguistic_data.py /path/to/OpenCC /path/to/McBopomofo /path/to/rime-terra-pinyin
 Sources and licenses are recorded in frontend/data/SOURCES.md.
@@ -58,7 +58,7 @@ for line in (mcb / 'Source/Data/BPMFMappings.txt').read_text(encoding='utf-8').s
     parts = line.split()
     if not parts: continue
     word, *readings = parts
-    if not 2 <= len(word) <= 8 or len(word) != len(readings) or blocked.intersection(word): continue
+    if not 2 <= len(word) <= 8 or len(word) != len(readings): continue
     key = '|'.join(map(normalize, readings))
     entries.setdefault(key, set()).add(word)
 # Terra Pinyin / CC-CEDICT adds vocabulary outside the primary Zhuyin source.
@@ -76,7 +76,7 @@ for line in (terra / 'terra_pinyin.dict.yaml').read_text(encoding='utf-8').split
     if len(parts) < 2: continue
     word, pinyin = parts[:2]
     codes = pinyin.replace('ü', 'v').replace('u:', 'v').split()
-    if not 2 <= len(word) <= 8 or len(word) != len(codes) or blocked.intersection(word): continue
+    if not 2 <= len(word) <= 8 or len(word) != len(codes): continue
     if any(code not in pinyin_to_zhuyin for code in codes): continue
     key = '|'.join(pinyin_to_zhuyin[code] for code in codes)
     bucket = entries.setdefault(key, set())
@@ -85,7 +85,7 @@ for line in (terra / 'terra_pinyin.dict.yaml').read_text(encoding='utf-8').split
 print(f'Terra Pinyin added {terra_added} additional word readings')
 with (root / 'frontend/data/phrases.tsv').open('w', encoding='utf-8', newline='\n') as out:
     for key, words in sorted(entries.items()):
-        ordered = sorted(words, key=lambda word: (-frequencies.get(word, 0), word))[:64]
+        ordered = sorted(words, key=lambda word: (bool(blocked.intersection(word)), -frequencies.get(word, 0), word))[:64]
         out.write(key + '\t' + '\t'.join(ordered) + '\n')
 (root / 'licenses/linguistic/OpenCC-Apache-2.0.txt').write_text((opencc / 'LICENSE').read_text(encoding='utf-8'), encoding='utf-8')
 (root / 'licenses/linguistic/McBopomofo-MIT.txt').write_text((mcb / 'LICENSE.txt').read_text(encoding='utf-8'), encoding='utf-8')

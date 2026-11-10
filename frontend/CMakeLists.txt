@@ -124,7 +124,9 @@ install(TARGETS llavon-ime
 
 if(BUILD_TESTING)
     find_package(unofficial-sqlite3 CONFIG REQUIRED)
-    add_executable(frontend-language-features-tests tests/language_features_tests.cpp)
+    add_executable(frontend-language-features-tests tests/language_features_tests.cpp
+        "${PROJECT_SOURCE_DIR}/service/src/service/custom_name_matcher.cpp")
+    target_include_directories(frontend-language-features-tests PRIVATE "${PROJECT_SOURCE_DIR}/ime-core/include")
     target_compile_features(frontend-language-features-tests PRIVATE cxx_std_23)
     target_compile_definitions(frontend-language-features-tests PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE WINVER=0x0A00 _WIN32_WINNT=0x0A00)
