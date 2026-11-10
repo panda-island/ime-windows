@@ -331,7 +331,7 @@ struct BopomofoPos {
         if (!is_compositable()) {
             return to_bopomofo_string();
         }
-        char32_t c = candidates.at(choose_index);
+        const char32_t c = current32();
         std::u16string s;
         utf8::append16(c, s);
         return s;
@@ -340,8 +340,7 @@ struct BopomofoPos {
         if (!is_compositable()) {
             throw std::logic_error("not compositable");
         }
-        char32_t c = candidates.at(choose_index);
-        return c;
+        return to_traditional_character(candidates.at(choose_index));
     }
 
 public:
@@ -366,6 +365,7 @@ public:
         return invalid;
     }
     void set_chosen_candidate(char32_t ch) {
+        ch = to_traditional_character(ch);
         initial = 0;
         medial = 0;
         final = 0;
@@ -386,7 +386,7 @@ public:
         manually_selected = true;
     }
     void choose_candidate(char32_t ch) {
-        if (!is_traditional_character(ch)) return;
+        ch = to_traditional_character(ch);
         const auto candidate = std::find(candidates.begin(), candidates.end(), ch);
         if (candidate == candidates.end()) {
             candidates.insert(candidates.begin(), ch);
@@ -404,7 +404,13 @@ public:
         return candidates;
     }
     std::vector<char32_t> selection_candidates() const {
-        auto result = get_candidates();
+        std::vector<char32_t> result;
+        for (const auto raw : get_candidates()) {
+            const auto character = to_traditional_character(raw);
+            if (std::find(result.begin(), result.end(), character) == result.end()) {
+                result.push_back(character);
+            }
+        }
         // Model token coverage must not remove valid manual alternatives.
         if (const auto* local = HanziMapEngine::instance().lookup_all(to_bopomofo_string())) {
             for (const auto character : *local) {
@@ -420,9 +426,9 @@ public:
     }
     void set_candaiates(const std::vector<char32_t>& nc) {
         std::vector<char32_t> filtered;
-        for (const char32_t candidate : nc) {
-            if (is_traditional_character(candidate) &&
-                std::find(filtered.begin(), filtered.end(), candidate) == filtered.end()) {
+        for (const char32_t raw : nc) {
+            const auto candidate = to_traditional_character(raw);
+            if (std::find(filtered.begin(), filtered.end(), candidate) == filtered.end()) {
                 filtered.push_back(candidate);
             }
         }

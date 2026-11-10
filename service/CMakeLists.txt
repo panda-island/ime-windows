@@ -66,6 +66,8 @@ add_executable(llavon-ime-service
 )
 
 # Embedded only in the web setup. The MSI never carries the GGUF payload.
+llavon_add_version_info(llavon-ime-service VFT_APP)
+
 add_executable(llavon-ime-model-installer
     src/model_installer_main.cpp
     src/service/model_revision_cleanup.cpp

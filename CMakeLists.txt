@@ -1,9 +1,8 @@
 cmake_minimum_required(VERSION 3.31)
 
-# The installer version is independent of release tags. WiX replaces
-# same-version bundles, so local and published installers can swap.
-set(LLAVON_IME_VERSION "1.0.0" CACHE STRING "Fixed installer version" FORCE)
-set(LLAVON_IME_MSI_VERSION "1.0.0" CACHE STRING "Fixed MSI product version" FORCE)
+# Bump the product version for releases so Windows recognizes the upgrade.
+set(LLAVON_IME_VERSION "1.0.1" CACHE STRING "Installer version" FORCE)
+set(LLAVON_IME_MSI_VERSION "1.0.1" CACHE STRING "MSI product version" FORCE)
 option(LLAVON_IME_ENABLE_CUDA "Build ime-core with the CUDA backend" OFF)
 
 # vcpkg's toolchain is loaded by project(). Select optional manifest features
@@ -43,6 +42,15 @@ endif()
 if(NOT LLAVON_IME_BUILD_NUMBER MATCHES "^[0-9]+$")
     message(FATAL_ERROR "LLAVON_IME_BUILD_NUMBER must be a non-negative integer")
 endif()
+
+function(llavon_add_version_info target file_type)
+    set(LLAVON_VERSION_FILE_TYPE "${file_type}")
+    set(LLAVON_VERSION_DESCRIPTION "${target}")
+    math(EXPR LLAVON_VERSION_REVISION "${LLAVON_IME_BUILD_NUMBER} % 65536")
+    set(_version_resource "${CMAKE_CURRENT_BINARY_DIR}/${target}-version.rc")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/version.rc.in" "${_version_resource}" @ONLY)
+    target_sources(${target} PRIVATE "${_version_resource}")
+endfunction()
 
 if(NOT LLAVON_IME_BUILD_COMMIT)
     string(LENGTH "$ENV{GITHUB_SHA}" _llavon_ime_github_sha_length)

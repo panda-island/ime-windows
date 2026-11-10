@@ -1,5 +1,6 @@
 #include "core/buffer.hpp"
 #include "../../service/src/service/selection_memory.hpp"
+#include "../../service/src/service/traditional_output.hpp"
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -10,12 +11,56 @@ void require(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
 }
 void run_tests(const std::filesystem::path& folder) {
-    std::ofstream(folder / "bopomofo_char.json") << R"({"ㄋㄧˇ":["你","妳","拟"],"ㄏㄠˇ":["好","郝"],"ㄍㄨㄛˊ":["國","国"],"ㄅㄨˋ":["不","部"]})";
+    std::ofstream(folder / "bopomofo_char.json") << R"({"ㄋㄧˇ":["你","妳","拟"],"ㄏㄠˇ":["好","郝"],"ㄍㄨㄛˊ":["國","国"],"ㄅㄨˋ":["不","部"],"ㄕㄥˋ":["圣","聖","勝"],"ㄊㄧˇ":["体","體"]})";
     std::ofstream(folder / "phrases.tsv") << "ㄋㄧˇ|ㄏㄠˇ\t你好\t妳好\n";
     SetEnvironmentVariableW(L"LLAVON_IME_TABLES_DIR", folder.wstring().c_str());
     require(!tsf::is_traditional_character(U'国'), "simplified-only character allowed");
     require(tsf::is_traditional_character(U'國'), "traditional character excluded");
     require(tsf::is_traditional_character(U'后'), "shared traditional character excluded");
+    require(std::is_sorted(tsf::simplified_only.begin(), tsf::simplified_only.end()),
+            "generated simplified-character lookup is not sorted");
+    for (const auto character : tsf::simplified_only) {
+        const auto normalized = tsf::to_traditional_character(character);
+        require(tsf::is_traditional_character(normalized) &&
+                tsf::to_traditional_character(normalized) == normalized,
+                "conversion produced a simplified character or was not idempotent");
+    }
+    struct ScriptCase { char32_t simplified; char32_t traditional; std::u16string reading; };
+    const ScriptCase script_cases[] = {{U'圣', U'聖', u"ㄕㄥˋ"}, {U'体', U'體', u"ㄊㄧˇ"}};
+    for (const auto& entry : script_cases) {
+        require(!tsf::is_traditional_character(entry.simplified) &&
+                tsf::to_traditional_character(entry.simplified) == entry.traditional,
+                "reported simplified character was not converted");
+        tsf::BopomofoPos position;
+        for (const auto ch : entry.reading) position.accept(ch);
+        require(std::ranges::all_of(position.get_candidates(), tsf::is_traditional_character),
+                "reported simplified character leaked through the local table");
+        position.set_candaiates({entry.simplified, entry.traditional});
+        require(position.current32() == entry.traditional && position.get_candidates().size() == 1,
+                "model output was not normalized and deduplicated");
+        position.choose_candidate(entry.simplified);
+        require(position.current32() == entry.traditional, "chosen model output was simplified");
+        position.set_chosen_candidate(entry.simplified);
+        require(position.current32() == entry.traditional, "fixed character bypassed normalization");
+        // Simulate a stale engine or imported candidate bypassing setters.
+        position.candidates = {entry.simplified};
+        require(position.current32() == entry.traditional, "final UTF-32 output was simplified");
+        std::u16string expected;
+        utf8::append16(entry.traditional, expected);
+        require(position.current() == expected, "final UTF-16 output was simplified");
+        require(position.selection_candidates() == std::vector<char32_t>{entry.traditional},
+                "selection list leaked an unnormalized fixed character");
+    }
+    const std::vector<std::pair<char32_t, float>> legacy_candidates{
+        {U'圣', 0.9F}, {U'聖', 0.8F}, {U'体', 0.7F}, {U'體', 0.6F}, {U'勝', 0.5F}};
+    require(llavon::service::traditional_response_candidates(legacy_candidates) ==
+            std::vector<char32_t>{U'聖', U'體', U'勝'},
+            "legacy pipe response leaked simplified output or changed ranking");
+    tsf::CompositionBuffer fixed_output;
+    fixed_output.add_chosen_candidate(U'圣');
+    fixed_output.add_chosen_candidate(U'体');
+    require(fixed_output.to_string() == u"聖體" && fixed_output.commit_sample({}).answer == u"聖體",
+            "composition or committed output was simplified");
     require(tsf::HanziMapEngine::instance().lookup_all(u"ㄍㄨㄛˊ")->size() == 1, "local candidates were not filtered");
     tsf::BopomofoPos predicted;
     predicted.set_chosen_candidate(U'國');
@@ -99,7 +144,32 @@ void run_tests(const std::filesystem::path& folder) {
         const std::vector<std::u16string> first_tone{u"ㄅㄚ "};
         require(memory.remember(tsf::PhraseLexicon::key(first_tone), U"巴") &&
                 memory.recall(first_tone).size() == 1, "first-tone preference was not normalized");
+        const std::vector<std::u16string> reported{u"ㄕㄥˋ", u"ㄊㄧˇ"};
+        require(memory.remember(tsf::PhraseLexicon::key(reported), U"圣体") &&
+                memory.recall(reported).front().word == U"聖體",
+                "new selection memory retained simplified text");
     }
+    // Seed an old database directly, before the normalization path existed.
+    sqlite3* legacy = nullptr;
+    const auto filename = database.u8string();
+    require(sqlite3_open(reinterpret_cast<const char*>(filename.c_str()), &legacy) == SQLITE_OK,
+            "could not open legacy selection memory");
+    sqlite3_stmt* insert = nullptr;
+    require(sqlite3_prepare_v2(legacy, "INSERT OR REPLACE INTO choices(reading,word) VALUES(?,?)",
+                -1, &insert, nullptr) == SQLITE_OK, "legacy selection insert failed");
+    const std::u16string legacy_key = u"ㄕㄥˋ|ㄊㄧˇ";
+    const std::u32string legacy_word = U"圣体";
+    sqlite3_bind_blob(insert, 1, legacy_key.data(), static_cast<int>(legacy_key.size() * sizeof(char16_t)), SQLITE_TRANSIENT);
+    sqlite3_bind_blob(insert, 2, legacy_word.data(), static_cast<int>(legacy_word.size() * sizeof(char32_t)), SQLITE_TRANSIENT);
+    const auto saved = sqlite3_step(insert);
+    sqlite3_finalize(insert);
+    sqlite3_close(legacy);
+    require(saved == SQLITE_DONE, "legacy selection could not be seeded");
+    llavon::service::SelectionMemory upgraded(database);
+    const std::vector<std::u16string> reported{u"ㄕㄥˋ", u"ㄊㄧˇ"};
+    const auto recovered = upgraded.recall(reported);
+    require(recovered.size() == 1 && recovered.front().word == U"聖體",
+            "old persisted simplified selection bypassed conversion");
 }
 
 void dictionary_tests(const std::filesystem::path& folder, const char* mapping, const char* phrases) {
@@ -108,7 +178,7 @@ void dictionary_tests(const std::filesystem::path& folder, const char* mapping, 
     SetEnvironmentVariableW(L"LLAVON_IME_TABLES_DIR", folder.wstring().c_str());
     struct Case { std::u16string reading; std::u32string word; };
     const Case cases[] = {{u"ㄊㄞˊㄨㄢ ", U"臺灣"}, {u"ㄕㄨ ㄖㄨˋㄈㄚˇ", U"輸入法"},
-                          {u"ㄖㄣˊㄍㄨㄥ ㄓˋㄏㄨㄟˋ", U"人工智慧"}};
+                          {u"ㄖㄣˊㄍㄨㄥ ㄓˋㄏㄨㄟˋ", U"人工智慧"}, {u"ㄕㄥˋㄊㄧˇ", U"聖體"}};
     for (const auto& entry : cases) {
         tsf::CompositionBuffer buffer;
         for (const auto ch : entry.reading) buffer.add(ch);

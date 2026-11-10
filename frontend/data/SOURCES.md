@@ -1,10 +1,13 @@
 # Linguistic data
 
-`traditional_characters.hpp` is generated from OpenCC STCharacters.txt at
+`shared/traditional_characters.hpp` is generated from OpenCC STCharacters.txt at
 fae2a0a911c30764e669a7d8b0591cd8e852934a (Apache-2.0).
 https://github.com/BYVoid/OpenCC
 Characters also present among traditional alternatives are retained, including
 shared characters such as 后, 里 and 干 when the source permits them.
+Simplified-only output is converted to the first traditional alternative in
+the pinned source. The same mapping protects frontend output, backend wire
+responses (including legacy clients), and persisted selection memory.
 
 `phrases.tsv` is derived from McBopomofo BPMFMappings.txt and phrase.occ at
 2f50c20521db780729013a59bfbcbdc3e98a387e (MIT).

@@ -228,7 +228,7 @@ UpdateCheckResult perform_check() {
         }
     }
 
-    // The installed WiX version is fixed; release tags are display metadata.
+    // Release tags are display metadata; product versions also identify MSI upgrades.
     // GitHub run numbers, not installer versions, order published builds.
     if (result.current_build == 0) {
         result.status = result.current_commit == result.latest_commit
