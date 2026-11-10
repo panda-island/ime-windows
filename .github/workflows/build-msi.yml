@@ -140,12 +140,12 @@ jobs:
         shell: pwsh
         run: cmake --build build/windows --config Release --target llavon-ime-setup --parallel
 
-      - name: Verify frontend DLL loading
+      - name: Verify frontend and language features
         shell: pwsh
         run: |
-          cmake --build build/windows --config Release --target frontend-dll-load-tests frontend-language-features-tests --parallel
+          cmake --build build/windows --config Release --target frontend-dll-load-tests frontend-language-features-tests frontend-tone-policy-tests frontend-engine-worker-tests --parallel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --test-dir build/windows -C Release -R '^(frontend-dll-load|frontend-language-features)$' --output-on-failure --no-tests=error
+          ctest --test-dir build/windows -C Release -R '^(frontend-dll-load|frontend-language-features|frontend-linguistic-data|frontend-tone-policy|frontend-engine-worker)$' --output-on-failure --no-tests=error
 
       - name: Verify packaged CPU backends
         shell: pwsh
