@@ -46,9 +46,9 @@
 
 ## 繁體候選、整詞選字與記憶
 
-中文候選會排除 OpenCC 字表中的簡體專用字；模型、自訂名字與選字記憶的輸出
-也會轉為繁體，例如「圣、体」轉為「聖、體」。前端與背景服務都會執行檢查，
-共用字形會保留。
+中文候選保留繁體與簡體原字形，排序時先列繁體，再列簡體；各組內維持模型或
+詞頻的順序。簡體可手動選入，輸出不會再強制轉換。有繁體候選時，自訂名字與
+選字記憶也不會讓簡體成為自動首選；只有簡體候選的讀音仍可正常輸入。
 詞庫整合 McBopomofo 與 Terra Pinyin，包含約 16 萬組注音詞條。
 
 輸入一段注音後，以左右鍵或滑鼠將游標移到要修正的詞之前，按下方向鍵「↓」。候選清單會
@@ -56,7 +56,7 @@
 按 Enter 確認。輸入游標在組字尾端時，會搜尋以該處結尾的詞語。
 
 手動選過的字或詞會記錄在本機 `%LOCALAPPDATA%\Llavon IME\selection-memory.sqlite3`。
-下次輸入相同注音時，最近選過的結果優先使用，重新啟動後仍會保留。
+下次輸入相同注音時，依繁體優先的規則使用最近選過的結果，重新啟動後仍會保留。
 資料與授權來源詳見 `frontend/data/SOURCES.md`。
 
 ## 開啟設定
@@ -137,11 +137,11 @@ cmake --build --preset package --parallel
 完成後，安裝檔位於：
 
 ```text
-build/windows/llavon-ime-1.0.1-windows.msi
-build/windows/llavon-ime-1.0.1-setup.exe
+build/windows/llavon-ime-1.0.2-windows.msi
+build/windows/llavon-ime-1.0.2-setup.exe
 ```
 
-安裝器與 MSI 的產品版號目前為 `1.0.1`，正式修訂會提高產品版號；CalVer 用於
+安裝器與 MSI 的產品版號目前為 `1.0.2`，正式修訂會提高產品版號；CalVer 用於
 GitHub 發布 tag 與 `latest.json`，建置編號用於檢查更新。輸入核心 DLL 與背景服務
 亦包含 Windows 檔案版本，便於辨識實際安裝內容。
 

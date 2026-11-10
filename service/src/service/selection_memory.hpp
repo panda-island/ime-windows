@@ -1,5 +1,5 @@
 #pragma once
-#include "../../../shared/traditional_characters.hpp"
+#include "../../../shared/candidate_policy.hpp"
 #include <sqlite3.h>
 #include <algorithm>
 #include <cstdint>
@@ -47,13 +47,11 @@ public:
     bool remember(std::u16string_view key, std::u32string_view word) {
         if (!db_ || key.empty() || key.size() > 128 || word.empty() || word.size() > 8) return false;
         std::lock_guard lock(mutex_);
-        std::u32string normalized(word);
-        for (auto& character : normalized) character = linguistic::to_traditional_character(character);
         sqlite3_stmt* query = nullptr;
         if (sqlite3_prepare_v2(db_, "INSERT OR REPLACE INTO choices(reading,word) VALUES(?,?)",
                 -1, &query, nullptr) != SQLITE_OK) return false;
         sqlite3_bind_blob(query, 1, key.data(), static_cast<int>(key.size() * sizeof(char16_t)), SQLITE_TRANSIENT);
-        sqlite3_bind_blob(query, 2, normalized.data(), static_cast<int>(normalized.size() * sizeof(char32_t)), SQLITE_TRANSIENT);
+        sqlite3_bind_blob(query, 2, word.data(), static_cast<int>(word.size() * sizeof(char32_t)), SQLITE_TRANSIENT);
         const bool saved = sqlite3_step(query) == SQLITE_DONE;
         sqlite3_finalize(query);
         return saved;
@@ -80,7 +78,6 @@ public:
                     if (bytes == static_cast<int>(length * sizeof(char32_t))) {
                         std::u32string word(length, 0);
                         std::memcpy(word.data(), sqlite3_column_blob(query, 0), static_cast<std::size_t>(bytes));
-                        for (auto& character : word) character = linguistic::to_traditional_character(character);
                         matches.push_back({start, std::move(word), sqlite3_column_int64(query, 1)});
                     }
                 }
@@ -88,6 +85,9 @@ public:
         }
         sqlite3_finalize(query);
         std::sort(matches.begin(), matches.end(), [](const Match& left, const Match& right) {
+            const bool left_traditional = linguistic::is_traditional_word(left.word);
+            const bool right_traditional = linguistic::is_traditional_word(right.word);
+            if (left_traditional != right_traditional) return left_traditional;
             return left.revision > right.revision;
         });
         return matches;

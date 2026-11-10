@@ -595,11 +595,6 @@ inline asio::awaitable<void> handle_client(
             if (!valid) break;
         }
         const auto custom_name_replacements = custom_names->apply(padding);
-        for (auto& entry : padding) {
-            if (entry.chosen) {
-                entry.chosen_char = linguistic::to_traditional_character(entry.chosen_char);
-            }
-        }
         std::vector<std::optional<char32_t>> fixed;
         for (const auto& entry : padding) {
             fixed.push_back(entry.chosen ? std::optional<char32_t>{entry.chosen_char} : std::nullopt);
@@ -615,9 +610,7 @@ inline asio::awaitable<void> handle_client(
             for (std::size_t index = 0;
                  index < results.size() && index < custom_name_replacements.size(); ++index) {
                 if (custom_name_replacements[index]) {
-                    results[index].candidates = {
-                        {*custom_name_replacements[index], 1.0F},
-                    };
+                    apply_custom_name_candidate(results[index].candidates, *custom_name_replacements[index]);
                 }
             }
             std::vector<bool> used(results.size(), false);

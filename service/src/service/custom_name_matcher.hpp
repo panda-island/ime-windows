@@ -20,8 +20,8 @@ public:
 
     void replace(const std::vector<CustomNameSetting>& settings);
 
-    // Marks matched entries as chosen for inference and returns the character
-    // that must be sent back to the frontend at every replaced position.
+    // Fixes traditional name characters for inference. Simplified characters
+    // remain alternatives so the model can still offer traditional candidates.
     std::vector<std::optional<char32_t>> apply(
         std::vector<llavon::ime::core::PaddingEntry>& padding) const;
 
