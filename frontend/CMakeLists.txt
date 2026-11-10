@@ -6,6 +6,7 @@ set(DEF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/ime.def")
 include_directories(src)
 
 add_library(llavon-ime SHARED ${SOURCES} ${HEADERS} ${RESOURCES} ${DEF_FILE})
+llavon_add_version_info(llavon-ime VFT_DLL)
 add_executable(llavon-ime-lifecycle WIN32
     tools/tsf_lifecycle.cpp
     src/system/serviceLauncher.cpp
@@ -158,6 +159,11 @@ if(BUILD_TESTING)
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
         WINVER=0x0A00 _WIN32_WINNT=0x0A00)
     target_compile_options(frontend-dll-load-tests PRIVATE /W4 /WX /utf-8 /permissive-)
+    target_compile_definitions(frontend-dll-load-tests PRIVATE
+        LLAVON_EXPECTED_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        LLAVON_EXPECTED_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        LLAVON_EXPECTED_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+    target_link_libraries(frontend-dll-load-tests PRIVATE version)
     set_target_properties(frontend-dll-load-tests PROPERTIES
         CXX_STANDARD_REQUIRED YES
         CXX_EXTENSIONS NO

@@ -30,6 +30,7 @@
 #include "gpu_latency_boost.hpp"
 #include "training_data_writer.hpp"
 #include "selection_memory.hpp"
+#include "traditional_output.hpp"
 
 namespace llavon::service {
 
@@ -268,9 +269,10 @@ inline asio::awaitable<void> write_response(asio::windows::stream_handle& pipe,
     if (!co_await write_val(pipe, count)) co_return;
 
     for (auto& r : results) {
-        uint32_t nc = static_cast<uint32_t>(r.candidates.size());
+        const auto candidates = traditional_response_candidates(r.candidates);
+        uint32_t nc = static_cast<uint32_t>(candidates.size());
         if (!co_await write_val(pipe, nc)) co_return;
-        for (auto& [c, _] : r.candidates) {
+        for (const auto c : candidates) {
             if (!co_await write_val(pipe, c)) co_return;
         }
     }
@@ -593,6 +595,11 @@ inline asio::awaitable<void> handle_client(
             if (!valid) break;
         }
         const auto custom_name_replacements = custom_names->apply(padding);
+        for (auto& entry : padding) {
+            if (entry.chosen) {
+                entry.chosen_char = linguistic::to_traditional_character(entry.chosen_char);
+            }
+        }
         std::vector<std::optional<char32_t>> fixed;
         for (const auto& entry : padding) {
             fixed.push_back(entry.chosen ? std::optional<char32_t>{entry.chosen_char} : std::nullopt);

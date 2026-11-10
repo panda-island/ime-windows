@@ -46,7 +46,9 @@
 
 ## 繁體候選、整詞選字與記憶
 
-中文候選會排除 OpenCC 字表中的簡體專用字。共用字形會保留。
+中文候選會排除 OpenCC 字表中的簡體專用字；模型、自訂名字與選字記憶的輸出
+也會轉為繁體，例如「圣、体」轉為「聖、體」。前端與背景服務都會執行檢查，
+共用字形會保留。
 詞庫整合 McBopomofo 與 Terra Pinyin，包含約 16 萬組注音詞條。
 
 輸入一段注音後，以左右鍵或滑鼠將游標移到要修正的詞之前，按下方向鍵「↓」。候選清單會
@@ -135,11 +137,16 @@ cmake --build --preset package --parallel
 完成後，安裝檔位於：
 
 ```text
-build/windows/llavon-ime-1.0.0-windows.msi
-build/windows/llavon-ime-1.0.0-setup.exe
+build/windows/llavon-ime-1.0.1-windows.msi
+build/windows/llavon-ime-1.0.1-setup.exe
 ```
 
-安裝器與 MSI 的內部版號固定為 `1.0.0`；CalVer 只用於 GitHub 發布 tag 與其 `latest.json` 發布資訊。從舊的 CalVer 安裝器轉換時，須先從 Windows「已安裝的應用程式」解除安裝舊的安裝套件一次（選顯示 CalVer 的項目，不是舊版另外顯示的 MSI）；否則 WiX 會把 `1.0.0` 視為降版。新安裝套件只會顯示一個解除安裝項目。本機之後只需執行 `cmake --build build/windows --config Release --target llavon-ime-setup --parallel`，不必為版號重新 configure。
+安裝器與 MSI 的產品版號目前為 `1.0.1`，正式修訂會提高產品版號；CalVer 用於
+GitHub 發布 tag 與 `latest.json`，建置編號用於檢查更新。輸入核心 DLL 與背景服務
+亦包含 Windows 檔案版本，便於辨識實際安裝內容。
+
+更新後請重新啟動 Windows，讓所有應用程式卸載仍在記憶體中的舊版輸入核心。
+僅重新開啟輸入法設定視窗，無法替換其他程式已載入的 DLL。
 
 建置 `*-setup.exe` 時會記錄 Hugging Face 模型 revision、大小及 SHA-256，模型檔不會打包進安裝檔。安裝時會下載至 `%ProgramData%\Llavon IME\models`；同一模型更新時會驗證既有檔案並略過下載。LoRA Trainer 可在訓練視窗選擇 CPU、CUDA 或 ROCm 版本下載。首次打包仍需從網路取得 vcpkg 相依套件及 WiX 工具。
 
