@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.31)
 
 # Bump the product version for releases so Windows recognizes the upgrade.
-set(LLAVON_IME_VERSION "1.0.2" CACHE STRING "Installer version" FORCE)
-set(LLAVON_IME_MSI_VERSION "1.0.2" CACHE STRING "MSI product version" FORCE)
+set(LLAVON_IME_VERSION "1.0.3" CACHE STRING "Installer version" FORCE)
+set(LLAVON_IME_MSI_VERSION "1.0.3" CACHE STRING "MSI product version" FORCE)
 option(LLAVON_IME_ENABLE_CUDA "Build ime-core with the CUDA backend" OFF)
 
 # vcpkg's toolchain is loaded by project(). Select optional manifest features

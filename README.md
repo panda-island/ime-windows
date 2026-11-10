@@ -49,6 +49,7 @@
 中文候選保留繁體與簡體原字形，排序時先列繁體，再列簡體；各組內維持模型或
 詞頻的順序。簡體可手動選入，輸出不會再強制轉換。有繁體候選時，自訂名字與
 選字記憶也不會讓簡體成為自動首選；只有簡體候選的讀音仍可正常輸入。
+「群、峰、床」等台灣常用正體字會按繁體排序，不會因「羣、峯、牀」等異體字而被排入簡體候選。
 詞庫整合 McBopomofo 與 Terra Pinyin，包含約 16 萬組注音詞條。
 
 輸入一段注音後，以左右鍵或滑鼠將游標移到要修正的詞之前，按下方向鍵「↓」。候選清單會
@@ -137,11 +138,11 @@ cmake --build --preset package --parallel
 完成後，安裝檔位於：
 
 ```text
-build/windows/llavon-ime-1.0.2-windows.msi
-build/windows/llavon-ime-1.0.2-setup.exe
+build/windows/llavon-ime-1.0.3-windows.msi
+build/windows/llavon-ime-1.0.3-setup.exe
 ```
 
-安裝器與 MSI 的產品版號目前為 `1.0.2`，正式修訂會提高產品版號；CalVer 用於
+安裝器與 MSI 的產品版號目前為 `1.0.3`，正式修訂會提高產品版號；CalVer 用於
 GitHub 發布 tag 與 `latest.json`，建置編號用於檢查更新。輸入核心 DLL 與背景服務
 亦包含 Windows 檔案版本，便於辨識實際安裝內容。
 

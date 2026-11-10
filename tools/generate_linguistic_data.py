@@ -11,6 +11,9 @@ opencc, mcb, terra = map(Path, sys.argv[1:])
 pairs = [line.split('\t') for line in (opencc / 'data/dictionary/STCharacters.txt').read_text(encoding='utf-8').splitlines()
          if line and not line.startswith('#')]
 traditional = {c for _, values in pairs for c in values.split()}
+tw_pairs = [line.split('\t') for line in (opencc / 'data/dictionary/TWVariants.txt').read_text(encoding='utf-8').splitlines()
+            if line and not line.startswith('#')]
+traditional.update(c for _, values in tw_pairs for c in values.split())
 simplified = sorted({key for key, _ in pairs if len(key) == 1} - traditional)
 defaults = {key: values.split()[0] for key, values in pairs}
 replacements = [defaults[key] for key in simplified]
@@ -20,7 +23,7 @@ header = '''#pragma once
 #include <string_view>
 
 namespace llavon::linguistic {
-// Generated from pinned OpenCC STCharacters. Shared traditional characters are kept.
+// Generated from pinned OpenCC STCharacters and TWVariants. Taiwan forms are kept.
 inline constexpr std::u32string_view simplified_only =
 '''
 for i in range(0, len(simplified), 80):

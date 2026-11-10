@@ -94,10 +94,10 @@ cmake --build --preset package
 MSI 輸出路徑：
 
 ```text
-build/windows/llavon-ime-1.0.2-windows.msi
+build/windows/llavon-ime-1.0.3-windows.msi
 ```
 
-GitHub Actions 會以亞洲／台北時區的 `YYYY.MM.DD.<1000+GITHUB_RUN_NUMBER>` CalVer 格式發布版本，寫入版本化的 `v<CalVer>` GitHub Release 與 `latest.json`。MSI 和安裝程式的產品版本目前為 `1.0.2`，正式修訂時需在根目錄 CMake 同步提高版號。輸入核心 DLL 與背景服務會嵌入產品版本及建置編號，以供 Windows Installer 和檔案內容頁辨識。
+GitHub Actions 會以亞洲／台北時區的 `YYYY.MM.DD.<1000+GITHUB_RUN_NUMBER>` CalVer 格式發布版本，寫入版本化的 `v<CalVer>` GitHub Release 與 `latest.json`。MSI 和安裝程式的產品版本目前為 `1.0.3`，正式修訂時需在根目錄 CMake 同步提高版號。輸入核心 DLL 與背景服務會嵌入產品版本及建置編號，以供 Windows Installer 和檔案內容頁辨識。
 
 設定頁面開啟時會檢查 `latest.json`，但只有使用者點擊「立即更新」才會開始安裝。第 1 版資訊清單也記錄安裝程式資產在版本化發行版中的網址、位元組大小及 SHA-256。網址取自實際發布的資產名稱，因此更改安裝程式執行檔名稱不需要修改更新程式。設定介面的 DLL 會將安裝程式下載至使用者的 LocalAppData，驗證大小與 SHA-256，再以 `runas` 啟動 WiX Burn 安裝套件，並傳入 `-quiet -norestart`。Windows 可能顯示 UAC 提示；WiX 不會顯示安裝介面。
 
