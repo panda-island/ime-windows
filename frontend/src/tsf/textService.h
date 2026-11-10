@@ -136,6 +136,7 @@ private:
     HRESULT ensure_text_edit_sink(ITfContext* context);
     void unadvise_text_edit_sink() noexcept;
     void show_candidate_list_for_current_input(ITfContext* pContext, bool expand);
+    void sync_composition_caret(ITfContext* context);
     std::u16string get_pre_composit_context(ITfContext* pContext);
     InputMode read_backend_input_mode();
     InputMode refresh_input_mode_indicator(bool query_backend = true);

@@ -1987,7 +1987,44 @@ void TextService::unadvise_text_edit_sink() noexcept {
     text_edit_sink_context_ = nullptr;
 }
 
+void TextService::sync_composition_caret(ITfContext* context) {
+    if (!composition_belongs_to(context)) return;
+    auto session = winrt::make_self<EditSession>();
+    session->set_operation([this, context](TfEditCookie cookie) {
+        if (!composition_belongs_to(context)) return;
+        TF_SELECTION selection = {};
+        ULONG fetched = 0;
+        if (FAILED(context->GetSelection(cookie, TF_DEFAULT_SELECTION, 1, &selection, &fetched)) ||
+            fetched == 0 || !selection.range) return;
+        winrt::com_ptr<ITfRange> caret;
+        caret.attach(selection.range);
+        BOOL empty = FALSE;
+        if (FAILED(caret->IsEmpty(cookie, &empty)) || !empty) return;
+        winrt::com_ptr<ITfRange> prefix;
+        if (FAILED(itfComposition->GetRange(prefix.put()))) return;
+        LONG from_start = 0;
+        LONG from_end = 0;
+        if (FAILED(caret->CompareStart(cookie, prefix.get(), TF_ANCHOR_START, &from_start)) ||
+            FAILED(caret->CompareStart(cookie, prefix.get(), TF_ANCHOR_END, &from_end)) ||
+            from_start < 0 || from_end > 0 ||
+            FAILED(prefix->ShiftEndToRange(cookie, caret.get(), TF_ANCHOR_START))) return;
+        std::array<WCHAR, 128> chunk{};
+        std::size_t offset = 0;
+        for (;;) {
+            ULONG copied = 0;
+            if (FAILED(prefix->GetText(cookie, TF_TF_MOVESTART, chunk.data(),
+                                      static_cast<ULONG>(chunk.size()), &copied))) return;
+            offset += copied;
+            if (copied < chunk.size()) break;
+        }
+        compositionBuffer.set_caret_offset(offset);
+    });
+    HRESULT result = E_FAIL;
+    context->RequestEditSession(_tfClientId, session.get(), TF_ES_READ | TF_ES_SYNC, &result);
+}
+
 void TextService::show_candidate_list_for_current_input(ITfContext* pContext, bool expand) {
+    sync_composition_caret(pContext);
     const auto choices = std::make_shared<std::vector<CompositionBuffer::CandidateChoice>>(
         compositionBuffer.candidate_choices());
     if (!pContext || choices->empty()) {
@@ -2015,8 +2052,11 @@ void TextService::show_candidate_list_for_current_input(ITfContext* pContext, bo
             });
             if (found == choices->end()) return;
             const auto readings = compositionBuffer.candidate_readings(found->span);
-            if (compositionBuffer.choose_phrase(found->span, word) && engine_worker_) {
-                engine_worker_->remember_selection(PhraseLexicon::key(readings), word);
+            if (compositionBuffer.choose_phrase(found->span, word)) {
+                if (engine_worker_ && !private_input_scope_) {
+                    engine_worker_->remember_selection(PhraseLexicon::key(readings), word);
+                }
+                set_composition_text(context.get(), compositionBuffer.to_string());
             }
         },
         [this, choices, snapshot, context](std::wstring selected) {

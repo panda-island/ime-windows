@@ -80,7 +80,7 @@ public:
             span.text_length += item.current().size();
         }
         if (length == 1) {
-            for (char32_t ch : buffer[start].get_candidates()) span.words.emplace_back(1, ch);
+            for (char32_t ch : buffer[start].selection_candidates()) span.words.emplace_back(1, ch);
         } else {
             const auto& words = HanziMapEngine::instance().lookup_phrases(readings);
             for (const auto& word : words) {
@@ -228,6 +228,22 @@ public:
             offset += buffer[i].current().size();
         }
         return offset;
+    }
+    bool set_caret_offset(std::size_t offset) {
+        if (offset == 0) {
+            idx = -1;
+            return true;
+        }
+        std::size_t boundary = 0;
+        for (std::size_t i = 0; i < buffer.size(); ++i) {
+            boundary += buffer[i].current().size();
+            if (boundary == offset) {
+                idx = static_cast<int>(i);
+                return true;
+            }
+            if (boundary > offset) break;
+        }
+        return false;
     }
     std::optional<std::pair<size_t, size_t>> current_invalid_span() const {
         if (!current_invalid()) {

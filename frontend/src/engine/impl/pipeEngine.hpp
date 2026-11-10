@@ -201,7 +201,7 @@ public:
             const auto reading = entry.was_manually_selected() ? std::u16string{} : entry.to_bopomofo_string();
             const auto length = static_cast<std::uint32_t>(reading.size());
             if (!write_exact(length) ||
-                (length > 0 && !write_exact(reading.data(), reading.size() * sizeof(char16_t)))) {
+                (length > 0 && !write_exact(reading.data(), length * static_cast<DWORD>(sizeof(char16_t))))) {
                 disconnect();
                 return;
             }
@@ -270,8 +270,8 @@ public:
         const auto key_size = static_cast<std::uint32_t>(key.size());
         const auto word_size = static_cast<std::uint32_t>(word.size());
         if (!write_command(PipeCommand::RememberSelection) || !write_exact(key_size) ||
-            !write_exact(key.data(), key.size() * sizeof(char16_t)) || !write_exact(word_size) ||
-            !write_exact(word.data(), word.size() * sizeof(char32_t))) {
+            !write_exact(key.data(), key_size * static_cast<DWORD>(sizeof(char16_t))) || !write_exact(word_size) ||
+            !write_exact(word.data(), word_size * static_cast<DWORD>(sizeof(char32_t)))) {
             disconnect();
             return;
         }

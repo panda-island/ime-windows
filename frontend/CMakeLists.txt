@@ -131,6 +131,9 @@ if(BUILD_TESTING)
     target_link_libraries(frontend-language-features-tests PRIVATE
         reflectcpp::reflectcpp utf8::cpp utf8cpp::utf8cpp unofficial::sqlite3::sqlite3)
     add_test(NAME frontend-language-features COMMAND frontend-language-features-tests)
+    add_test(NAME frontend-linguistic-data COMMAND frontend-language-features-tests
+        "${PROJECT_SOURCE_DIR}/ime-core/table/bopomofo_char.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/phrases.tsv")
     add_executable(frontend-tone-policy-tests tests/tone_policy_tests.cpp)
     target_compile_features(frontend-tone-policy-tests PRIVATE cxx_std_23)
     target_compile_options(frontend-tone-policy-tests PRIVATE /W4 /WX /utf-8 /permissive-)

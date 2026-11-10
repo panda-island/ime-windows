@@ -403,6 +403,18 @@ public:
         }
         return candidates;
     }
+    std::vector<char32_t> selection_candidates() const {
+        auto result = get_candidates();
+        // Model token coverage must not remove valid manual alternatives.
+        if (const auto* local = HanziMapEngine::instance().lookup_all(to_bopomofo_string())) {
+            for (const auto character : *local) {
+                if (std::find(result.begin(), result.end(), character) == result.end()) {
+                    result.push_back(character);
+                }
+            }
+        }
+        return result;
+    }
     bool was_manually_selected() const noexcept {
         return manually_selected;
     }
