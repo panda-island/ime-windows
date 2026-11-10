@@ -12,13 +12,32 @@ void require(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
 }
 void run_tests(const std::filesystem::path& folder) {
-    std::ofstream(folder / "bopomofo_char.json") << R"({"ㄋㄧˇ":["你","妳","拟"],"ㄏㄠˇ":["好","郝"],"ㄍㄨㄛˊ":["國","国"],"ㄅㄨˋ":["不","部"],"ㄕㄥˋ":["圣","聖","勝"],"ㄊㄧˇ":["体","體"],"ㄅㄧㄢˋ":["变"]})";
+    std::ofstream(folder / "bopomofo_char.json") << R"({"ㄋㄧˇ":["你","妳","拟"],"ㄏㄠˇ":["好","郝"],"ㄍㄨㄛˊ":["國","国"],"ㄅㄨˋ":["不","部"],"ㄕㄥˋ":["圣","聖","勝"],"ㄊㄧˇ":["体","體"],"ㄅㄧㄢˋ":["变"],"ㄑㄩㄣˊ":["群","裙","羣"],"ㄗㄨˇ":["組","组"]})";
     std::ofstream(folder / "phrases.tsv") << "ㄋㄧˇ|ㄏㄠˇ\t你好\t妳好\n"
-        "ㄕㄥˋ|ㄊㄧˇ\t圣体\t聖體\nㄕㄥˋ|ㄊㄧˇ|ㄅㄨˋ\t圣体不\n";
+        "ㄕㄥˋ|ㄊㄧˇ\t圣体\t聖體\nㄕㄥˋ|ㄊㄧˇ|ㄅㄨˋ\t圣体不\nㄑㄩㄣˊ|ㄗㄨˇ\t群組\n";
     SetEnvironmentVariableW(L"LLAVON_IME_TABLES_DIR", folder.wstring().c_str());
     require(!tsf::is_traditional_character(U'国'), "simplified-only character allowed");
     require(tsf::is_traditional_character(U'國'), "traditional character excluded");
     require(tsf::is_traditional_character(U'后'), "shared traditional character excluded");
+    for (const auto character : std::u32string_view(U"群峰床灶痴粽么")) {
+        require(tsf::is_traditional_character(character) && tsf::to_traditional_character(character) == character,
+                "Taiwan traditional character was classified as simplified");
+    }
+    tsf::CompositionBuffer group;
+    for (const auto ch : std::u16string(u"ㄑㄩㄣˊ")) group.add(ch);
+    require(group.to_string() == u"群", "Taiwan group character was converted or moved behind skirt");
+    const std::vector<std::pair<char32_t, float>> group_model{{U'群', 0.9F}, {U'裙', 0.8F}, {U'羣', 0.7F}};
+    require(llavon::service::traditional_response_candidates(group_model) ==
+            std::vector<char32_t>{U'群', U'裙', U'羣'}, "backend misclassified the Taiwan group character");
+    const auto group_choices = group.candidate_choices();
+    require(std::any_of(group_choices.begin(), group_choices.end(), [](const auto& choice) { return choice.word == U"群"; }) &&
+            std::any_of(group_choices.begin(), group_choices.end(), [](const auto& choice) { return choice.word == U"裙"; }),
+            "group or skirt candidate disappeared for qun2");
+    for (const auto ch : std::u16string(u"ㄗㄨˇ")) group.add(ch);
+    require(group.set_caret_offset(0), "group phrase caret positioning failed");
+    const auto group_span = group.candidate_span(2);
+    require(group_span && group.choose_phrase(*group_span, U"群組") && group.to_string() == u"群組",
+            "Taiwan group phrase could not be selected unchanged");
     require(std::is_sorted(tsf::simplified_only.begin(), tsf::simplified_only.end()),
             "generated simplified-character lookup is not sorted");
     for (const auto character : tsf::simplified_only) {
@@ -220,7 +239,8 @@ void dictionary_tests(const std::filesystem::path& folder, const char* mapping, 
     SetEnvironmentVariableW(L"LLAVON_IME_TABLES_DIR", folder.wstring().c_str());
     struct Case { std::u16string reading; std::u32string word; };
     const Case cases[] = {{u"ㄊㄞˊㄨㄢ ", U"臺灣"}, {u"ㄕㄨ ㄖㄨˋㄈㄚˇ", U"輸入法"},
-                          {u"ㄖㄣˊㄍㄨㄥ ㄓˋㄏㄨㄟˋ", U"人工智慧"}, {u"ㄕㄥˋㄊㄧˇ", U"聖體"}};
+                          {u"ㄖㄣˊㄍㄨㄥ ㄓˋㄏㄨㄟˋ", U"人工智慧"}, {u"ㄕㄥˋㄊㄧˇ", U"聖體"},
+                          {u"ㄑㄩㄣˊㄗㄨˇ", U"群組"}};
     for (const auto& entry : cases) {
         tsf::CompositionBuffer buffer;
         for (const auto ch : entry.reading) buffer.add(ch);

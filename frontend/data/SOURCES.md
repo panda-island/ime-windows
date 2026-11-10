@@ -1,10 +1,12 @@
 # Linguistic data
 
-`shared/traditional_characters.hpp` is generated from OpenCC STCharacters.txt at
+`shared/traditional_characters.hpp` is generated from OpenCC STCharacters.txt and TWVariants.txt at
 fae2a0a911c30764e669a7d8b0591cd8e852934a (Apache-2.0).
 https://github.com/BYVoid/OpenCC
 Characters also present among traditional alternatives are retained, including
 shared characters such as 后, 里 and 干 when the source permits them.
+Taiwan standard forms from TWVariants are also treated as traditional, including
+群, 峰, 床, 灶, 痴, 粽 and 么, which STCharacters alone otherwise misclassifies.
 The classification ranks traditional candidates ahead of simplified-only
 candidates without changing their original spelling. The same preference is
 applied to frontend candidates, backend wire responses and selection memory.
