@@ -16,6 +16,7 @@
 #include <iostream>
 #include <list>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@
 #include "custom_name_matcher.hpp"
 #include "gpu_latency_boost.hpp"
 #include "training_data_writer.hpp"
+#include "selection_memory.hpp"
 
 namespace llavon::service {
 
@@ -47,6 +49,8 @@ enum class PipeCommand : uint8_t {
     RecordCommit = 5,
     DiscardLastCommit = 6,
     Prefill = 7,
+    RememberSelection = 8,
+    PredictWithReadings = 9,
 };
 
 enum class InputMode : uint8_t {
@@ -440,6 +444,7 @@ inline asio::awaitable<void> handle_client(
     std::shared_ptr<SessionLru> sessions,
     std::shared_ptr<CustomNameMatcher> custom_names,
     std::shared_ptr<TrainingDataWriter> training_data,
+    std::shared_ptr<SelectionMemory> memory,
     std::string collection_session_id,
     SessionLru::ClientId client_id) {
     ClientSession client_session(std::move(inference), std::move(sessions), client_id);
@@ -450,6 +455,26 @@ inline asio::awaitable<void> handle_client(
         if (!co_await read_val(pipe, raw_command)) break;
 
         const auto command = static_cast<PipeCommand>(raw_command);
+        if (command == PipeCommand::RememberSelection) {
+            std::u16string key;
+            std::uint32_t count = 0;
+            if (!co_await read_utf16_string(pipe, key, 128) ||
+                !co_await read_val(pipe, count) || count == 0 || count > 8) break;
+            std::u32string word(count, 0);
+            bool valid = true;
+            for (auto& character : word) {
+                if (!co_await read_val(pipe, character) || character > U'\U0010FFFF' ||
+                    (character >= 0xd800 && character <= 0xdfff)) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid) break;
+            const std::uint8_t saved = memory->remember(key, word) ? 1 : 0;
+            co_await write_val(pipe, saved);
+            continue;
+        }
+
         if (command == PipeCommand::ToggleInputMode) {
             const InputMode mode = toggle_input_mode();
             std::clog << "[SRV] input mode: " << (mode == InputMode::Chinese ? "Chinese" : "English") << '\n';
@@ -545,7 +570,7 @@ inline asio::awaitable<void> handle_client(
             continue;
         }
 
-        if (command != PipeCommand::Predict) {
+        if (command != PipeCommand::Predict && command != PipeCommand::PredictWithReadings) {
             std::cerr << "[ERR] unknown pipe command: " << static_cast<int>(raw_command) << std::endl;
             break;
         }
@@ -556,8 +581,22 @@ inline asio::awaitable<void> handle_client(
         std::vector<llavon::ime::core::PaddingEntry> padding;
         if (!co_await read_padding(pipe, padding)) break;
         if (padding.empty() && context.empty()) break;
+        std::vector<std::u16string> readings;
+        for (const auto& entry : padding) {
+            readings.push_back(entry.chosen ? std::u16string{} : entry.bopomofo);
+        }
+        if (command == PipeCommand::PredictWithReadings) {
+            bool valid = true;
+            for (auto& reading : readings) {
+                if (!co_await read_utf16_string(pipe, reading, 16)) { valid = false; break; }
+            }
+            if (!valid) break;
+        }
         const auto custom_name_replacements = custom_names->apply(padding);
-
+        std::vector<std::optional<char32_t>> fixed;
+        for (const auto& entry : padding) {
+            fixed.push_back(entry.chosen ? std::optional<char32_t>{entry.chosen_char} : std::nullopt);
+        }
         std::vector<llavon::ime::core::Prediction> results;
         bool ok = false;
         try {
@@ -572,6 +611,25 @@ inline asio::awaitable<void> handle_client(
                     results[index].candidates = {
                         {*custom_name_replacements[index], 1.0F},
                     };
+                }
+            }
+            std::vector<bool> used(results.size(), false);
+            for (const auto& match : memory->recall(readings)) {
+                if (match.start + match.word.size() > results.size()) continue;
+                bool available = true;
+                for (std::size_t i = 0; i < match.word.size(); ++i) {
+                    available &= !used[match.start + i] && !readings[match.start + i].empty() &&
+                        (!fixed[match.start + i] || *fixed[match.start + i] == match.word[i]) &&
+                        (match.start + i >= custom_name_replacements.size() ||
+                         !custom_name_replacements[match.start + i].has_value());
+                }
+                if (!available) continue;
+                for (std::size_t i = 0; i < match.word.size(); ++i) {
+                    auto& candidates = results[match.start + i].candidates;
+                    const auto character = match.word[i];
+                    std::erase_if(candidates, [character](const auto& entry) { return entry.first == character; });
+                    candidates.insert(candidates.begin(), {character, 1.0F});
+                    used[match.start + i] = true;
                 }
             }
             ok = true;
@@ -593,6 +651,11 @@ inline asio::awaitable<void> listener(
     std::shared_ptr<CustomNameMatcher> custom_names,
     std::shared_ptr<TrainingDataWriter> training_data) {
     auto executor = co_await asio::this_coro::executor;
+    wchar_t app_data[32768] = {};
+    const auto copied = GetEnvironmentVariableW(L"LOCALAPPDATA", app_data, 32768);
+    if (copied == 0 || copied >= 32768) co_return;
+    auto memory = std::make_shared<SelectionMemory>(
+        std::filesystem::path(app_data) / L"Llavon IME" / L"selection-memory.sqlite3");
     SessionLru::ClientId next_client_id = 1;
 
     const auto pipe_name = llavon::ipc::session_pipe_name(pipe_base_name);
@@ -638,7 +701,7 @@ inline asio::awaitable<void> listener(
         const SessionLru::ClientId client_id = next_client_id++;
         co_spawn(executor,
                  handle_client(std::move(stream), inference, sessions, custom_names,
-                               training_data, new_collection_session_id(), client_id),
+                               training_data, memory, new_collection_session_id(), client_id),
                  asio::detached);
     }
 }

@@ -122,6 +122,15 @@ install(TARGETS llavon-ime
 )
 
 if(BUILD_TESTING)
+    find_package(unofficial-sqlite3 CONFIG REQUIRED)
+    add_executable(frontend-language-features-tests tests/language_features_tests.cpp)
+    target_compile_features(frontend-language-features-tests PRIVATE cxx_std_23)
+    target_compile_definitions(frontend-language-features-tests PRIVATE
+        WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+    target_compile_options(frontend-language-features-tests PRIVATE /W4 /WX /utf-8 /permissive-)
+    target_link_libraries(frontend-language-features-tests PRIVATE
+        reflectcpp::reflectcpp utf8::cpp utf8cpp::utf8cpp unofficial::sqlite3::sqlite3)
+    add_test(NAME frontend-language-features COMMAND frontend-language-features-tests)
     add_executable(frontend-tone-policy-tests tests/tone_policy_tests.cpp)
     target_compile_features(frontend-tone-policy-tests PRIVATE cxx_std_23)
     target_compile_options(frontend-tone-policy-tests PRIVATE /W4 /WX /utf-8 /permissive-)

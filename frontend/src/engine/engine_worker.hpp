@@ -152,6 +152,14 @@ public:
         return token;
     }
 
+    void remember_selection(std::u16string key, std::u32string word) {
+        std::lock_guard lock(mutex_);
+        if (stopping_) return;
+        enqueue_locked(Kind::Other, [key = std::move(key), word = std::move(word)](IEngine& engine) {
+            engine.remember_selection(key, word);
+        });
+    }
+
     void discard_commit(std::uint64_t token) {
         std::lock_guard lock(mutex_);
         if (stopping_) return;

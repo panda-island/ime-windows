@@ -196,12 +196,14 @@ public:
         return shown_;
     }
 
-    void update(const std::vector<std::wstring>& can, std::function<void(std::wstring)> callback) {
+    void update(const std::vector<std::wstring>& can, std::function<void(std::wstring)> callback,
+                std::function<void(std::wstring)> on_select = {}) {
         candidates = can;
         selection_index = 0;
         current_page = 0;
         expanded = false;
         finalize_callback = std::move(callback);
+        preview_callback = std::move(on_select);
         refresh_window();
     }
 
@@ -358,6 +360,7 @@ private:
     RECT anchor_rect = {};
     HWND owner_window = nullptr;
     std::function<void(std::wstring)> finalize_callback;
+    std::function<void(std::wstring)> preview_callback;
     CandidateUiClient candidate_ui_client_;
 
 private:
@@ -381,6 +384,7 @@ private:
 
         current_page = std::min(current_page, page_count() - 1);
         selection_index = std::min(selection_index, static_cast<UINT>(candidates.size() - 1));
+        if (shown_ && preview_callback) preview_callback(candidates[selection_index]);
 
         UINT start_page = current_page;
         UINT visible_pages = 1;

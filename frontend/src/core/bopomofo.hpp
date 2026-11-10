@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <windows.h>
 
@@ -6,6 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <span>
+#include "phrase_lexicon.hpp"
+#include "traditional_characters.hpp"
 #include <source_location>
 #include <string>
 #include <unordered_map>
@@ -128,6 +131,7 @@ public:
 class HanziMapEngine {
     std::unordered_map<std::u16string, std::vector<char32_t>> mapping;
     std::unordered_set<char32_t> hanzi_set;
+    PhraseLexicon phrases_;
 
 public:
     static HanziMapEngine& instance() {
@@ -159,6 +163,10 @@ public:
 
     const std::unordered_set<char32_t>& get_word_set() {
         return hanzi_set;
+    }
+
+    const std::vector<std::u32string>& lookup_phrases(std::span<const std::u16string> readings) const {
+        return phrases_.lookup(readings);
     }
 
 private:
@@ -251,10 +259,34 @@ private:
             std::vector<char32_t> wvec;
             for (const auto& item : v) {
                 char32_t hanzi = utf8::utf8to32(item)[0];
+                if (!is_traditional_character(hanzi)) continue;
                 wvec.push_back(hanzi);
                 hanzi_set.insert(hanzi);
             }
-            mapping[key] = std::move(wvec);
+            if (!wvec.empty()) mapping[key] = std::move(wvec);
+        }
+        auto phrase_file = mapping_file.parent_path() / "phrases.tsv";
+        if (!std::filesystem::exists(phrase_file)) {
+            const auto source_root = std::filesystem::path(__FILE__).parent_path().parent_path()
+                .parent_path().parent_path();
+            phrase_file = source_root / "frontend" / "data" / "phrases.tsv";
+        }
+        std::ifstream phrase_input(phrase_file);
+        std::string line;
+        while (std::getline(phrase_input, line)) {
+            const auto separator = line.find('\t');
+            if (separator == std::string::npos) continue;
+            const auto reading_key = utf8::utf8to16(line.substr(0, separator));
+            auto begin = separator + 1;
+            while (begin < line.size()) {
+                const auto end = line.find('\t', begin);
+                auto word = utf8::utf8to32(line.substr(begin, end - begin));
+                if (std::all_of(word.begin(), word.end(), is_traditional_character)) {
+                    phrases_.add(reading_key, std::move(word));
+                }
+                if (end == std::string::npos) break;
+                begin = end + 1;
+            }
         }
     }
 };
@@ -354,6 +386,7 @@ public:
         manually_selected = true;
     }
     void choose_candidate(char32_t ch) {
+        if (!is_traditional_character(ch)) return;
         const auto candidate = std::find(candidates.begin(), candidates.end(), ch);
         if (candidate == candidates.end()) {
             candidates.insert(candidates.begin(), ch);
@@ -373,8 +406,19 @@ public:
     bool was_manually_selected() const noexcept {
         return manually_selected;
     }
-    const void set_candaiates(const std::vector<char32_t>& nc) {
-        candidates = nc;
+    void set_candaiates(const std::vector<char32_t>& nc) {
+        std::vector<char32_t> filtered;
+        for (const char32_t candidate : nc) {
+            if (is_traditional_character(candidate) &&
+                std::find(filtered.begin(), filtered.end(), candidate) == filtered.end()) {
+                filtered.push_back(candidate);
+            }
+        }
+        // Keep the local traditional fallback if every prediction was excluded.
+        if (!filtered.empty()) {
+            candidates = std::move(filtered);
+            choose_index = 0;
+        }
     }
 
     bool pop_last_bopomofo() {

@@ -37,7 +37,8 @@ CandidateKeyResult CandidateUiController::handle_key(WPARAM wParam) {
 }
 
 void CandidateUiController::show(ITfContext* context, const std::vector<std::wstring>& candidates,
-                                 std::function<void(std::wstring)> on_finalize) {
+                                 std::function<void(std::wstring)> on_finalize,
+                                 std::function<void(std::wstring)> on_select) {
     if (!context || candidates.empty()) {
         hide();
         return;
@@ -64,7 +65,7 @@ void CandidateUiController::show(ITfContext* context, const std::vector<std::wst
             callback(std::move(word));
         }
         dismiss_ui_element();
-    });
+    }, std::move(on_select));
 
     if (is_active()) {
         ui_element_mgr->UpdateUIElement(ui_element_id_);

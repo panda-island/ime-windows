@@ -21,7 +21,8 @@ public:
     CandidateKeyResult handle_key(WPARAM wParam);
 
     void show(ITfContext* context, const std::vector<std::wstring>& candidates,
-              std::function<void(std::wstring)> on_finalize);
+              std::function<void(std::wstring)> on_finalize,
+              std::function<void(std::wstring)> on_select = {});
     void expand();
     void hide();
 

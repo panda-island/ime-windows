@@ -1347,11 +1347,11 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
                 *pfEaten = TRUE;
                 return S_OK;
             case CandidateKeyResult::finalized:
-                compositionBuffer.next();
                 refresh_composition_after_candidate_finalize(pContext, e2e_trace);
                 *pfEaten = TRUE;
                 return S_OK;
             case CandidateKeyResult::aborted:
+                set_composition_text(pContext, compositionBuffer.to_string());
                 *pfEaten = TRUE;
                 return S_OK;
             case CandidateKeyResult::not_handled:
@@ -1988,40 +1988,49 @@ void TextService::unadvise_text_edit_sink() noexcept {
 }
 
 void TextService::show_candidate_list_for_current_input(ITfContext* pContext, bool expand) {
-    if (!pContext || compositionBuffer.empty() || !compositionBuffer.current_has_candidate_list()) {
+    const auto choices = std::make_shared<std::vector<CompositionBuffer::CandidateChoice>>(
+        compositionBuffer.candidate_choices());
+    if (!pContext || choices->empty()) {
         candidate_ui_->hide();
         return;
     }
-
-    auto& target = compositionBuffer.candidate_target();
-    show_candidate_list(target, pContext);
-    if (expand) {
-        candidate_ui_->expand();
+    const auto snapshot = compositionBuffer.to_string();
+    const auto& preview = choices->front().span;
+    if (FAILED(set_composition_text(pContext, snapshot, preview.offset, preview.text_length))) return;
+    std::vector<std::wstring> candidates;
+    for (const auto& choice : *choices) {
+        std::u16string text;
+        for (char32_t ch : choice.word) utf8::append16(ch, text);
+        candidates.emplace_back(text.begin(), text.end());
     }
-}
-
-/**
- * @brief Displays the candidate list UI with the given candidates.
- */
-void TextService::show_candidate_list(BopomofoPos& bopomofoPos, ITfContext* pContext) {
-    // TODO
-    std::shared_ptr<std::vector<std::wstring>> candidate_ptr = std::make_shared<std::vector<std::wstring>>();
-    for (auto candi : bopomofoPos.get_candidates()) {
-        std::u16string str;
-        utf8::append16(candi, str);
-        std::wstring wstr(str.begin(), str.end());
-        candidate_ptr->push_back(wstr);
-    }
-
-    candidate_ui_->show(pContext, *candidate_ptr, [&bopomofoPos, candidate_ptr](std::wstring word) {
-        auto& candidate = *candidate_ptr;
-        for (int i = 0; i < candidate.size(); i++) {
-            if (word == candidate[i]) {
-                bopomofoPos.set_choose_index(i);
-                return;
+    winrt::com_ptr<ITfContext> context;
+    context.copy_from(pContext);
+    candidate_ui_->show(pContext, candidates,
+        [this, choices, snapshot, context](std::wstring selected) {
+            if (!composition_belongs_to(context.get()) || compositionBuffer.to_string() != snapshot) return;
+            const std::u16string text(selected.begin(), selected.end());
+            const auto word = utf8::utf8to32(utf8::utf16to8(text));
+            const auto found = std::find_if(choices->begin(), choices->end(), [&word](const auto& choice) {
+                return choice.word == word;
+            });
+            if (found == choices->end()) return;
+            const auto readings = compositionBuffer.candidate_readings(found->span);
+            if (compositionBuffer.choose_phrase(found->span, word) && engine_worker_) {
+                engine_worker_->remember_selection(PhraseLexicon::key(readings), word);
             }
-        }
-    });
+        },
+        [this, choices, snapshot, context](std::wstring selected) {
+            if (!composition_belongs_to(context.get()) || compositionBuffer.to_string() != snapshot) return;
+            const std::u16string text(selected.begin(), selected.end());
+            const auto word = utf8::utf8to32(utf8::utf16to8(text));
+            const auto found = std::find_if(choices->begin(), choices->end(), [&word](const auto& choice) {
+                return choice.word == word;
+            });
+            if (found != choices->end()) {
+                set_composition_text(context.get(), snapshot, found->span.offset, found->span.text_length);
+            }
+        });
+    if (expand) candidate_ui_->expand();
 }
 
 inline constexpr LONG kMaxPreCompositionContextChars = 384;

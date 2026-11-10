@@ -306,6 +306,10 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ime-core/table/"
     DESTINATION tables
     COMPONENT Runtime
 )
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/frontend/data/phrases.tsv"
+    DESTINATION tables COMPONENT Runtime)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/licenses/linguistic/"
+    DESTINATION licenses/linguistic COMPONENT Runtime)
 install(PROGRAMS "${LLAVON_IME_SERVICE_STARTUP_LAUNCHER}"
     DESTINATION bin
     COMPONENT Runtime

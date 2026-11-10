@@ -1,0 +1,11 @@
+Terra Pinyin dictionary / CC-CEDICT
+Published by MDBG and maintained by the CC-CEDICT community.
+https://cc-cedict.org/wiki/
+https://github.com/rime/rime-terra-pinyin
+
+Creative Commons Attribution-ShareAlike 3.0 Unported
+https://creativecommons.org/licenses/by-sa/3.0/
+Legal code: https://creativecommons.org/licenses/by-sa/3.0/legalcode
+
+The adapted phrases.tsv database is distributed under this license.
+The source snapshots and adaptation steps are recorded in frontend/data/SOURCES.md.

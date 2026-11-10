@@ -25,6 +25,8 @@ enum class PipeCommand : uint8_t {
     RecordCommit = 5,
     DiscardLastCommit = 6,
     Prefill = 7,
+    RememberSelection = 8,
+    PredictWithReadings = 9,
 };
 
 class PipeEngine : public IEngine {
@@ -169,7 +171,7 @@ public:
         if (!ensure_pipe()) return;
 
         // --- request ---
-        if (!write_command(PipeCommand::Predict)) { disconnect(); return; }
+        if (!write_command(PipeCommand::PredictWithReadings)) { disconnect(); return; }
 
         uint32_t ctx_len = static_cast<uint32_t>(context.size());
         if (!write_exact(ctx_len)) { disconnect(); return; }
@@ -190,6 +192,18 @@ public:
                 uint32_t len = static_cast<uint32_t>(bpmf.size());
                 if (!write_exact(len)) { disconnect(); return; }
                 if (len > 0 && !write_exact(bpmf.data(), len * sizeof(char16_t))) { disconnect(); return; }
+            }
+        }
+
+        // Keep phonetic keys even for automatically fixed single-candidate
+        // characters, so remembered multi-character choices can still match.
+        for (const auto& entry : padding) {
+            const auto reading = entry.was_manually_selected() ? std::u16string{} : entry.to_bopomofo_string();
+            const auto length = static_cast<std::uint32_t>(reading.size());
+            if (!write_exact(length) ||
+                (length > 0 && !write_exact(reading.data(), reading.size() * sizeof(char16_t)))) {
+                disconnect();
+                return;
             }
         }
 
@@ -249,6 +263,20 @@ public:
             }
         }
         return token;
+    }
+
+    void remember_selection(const std::u16string& key, const std::u32string& word) override {
+        if (key.empty() || key.size() > 128 || word.empty() || word.size() > 8 || !ensure_pipe()) return;
+        const auto key_size = static_cast<std::uint32_t>(key.size());
+        const auto word_size = static_cast<std::uint32_t>(word.size());
+        if (!write_command(PipeCommand::RememberSelection) || !write_exact(key_size) ||
+            !write_exact(key.data(), key.size() * sizeof(char16_t)) || !write_exact(word_size) ||
+            !write_exact(word.data(), word.size() * sizeof(char32_t))) {
+            disconnect();
+            return;
+        }
+        std::uint8_t saved = 0;
+        if (!read_exact(saved)) disconnect();
     }
 
     void discard_commit(std::uint64_t token) override {

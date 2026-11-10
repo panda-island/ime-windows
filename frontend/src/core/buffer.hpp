@@ -53,6 +53,90 @@ class CompositionBuffer {
     }
 
 public:
+    struct CandidateSpan {
+        std::size_t start;
+        std::size_t length;
+        std::size_t offset;
+        std::size_t text_length;
+        std::vector<std::u32string> words;
+    };
+
+    std::optional<CandidateSpan> candidate_span(std::size_t length) const {
+        if (length == 0 || length > buffer.size() || length > 8) return std::nullopt;
+        const int target = candidate_target_index();
+        if (target < 0) return std::nullopt;
+        const auto start = idx + 1 == static_cast<int>(buffer.size())
+            ? buffer.size() - length : static_cast<std::size_t>(target);
+        if (start + length > buffer.size()) return std::nullopt;
+        CandidateSpan span{start, length, 0, 0, {}};
+        for (std::size_t i = 0; i < start; ++i) span.offset += buffer[i].current().size();
+        std::vector<std::u16string> readings;
+        std::u32string current;
+        for (std::size_t i = start; i < start + length; ++i) {
+            const auto& item = buffer[i];
+            if (!item.is_compositable() || item.is_null()) return std::nullopt;
+            readings.push_back(item.to_bopomofo_string());
+            current += item.current32();
+            span.text_length += item.current().size();
+        }
+        if (length == 1) {
+            for (char32_t ch : buffer[start].get_candidates()) span.words.emplace_back(1, ch);
+        } else {
+            const auto& words = HanziMapEngine::instance().lookup_phrases(readings);
+            for (const auto& word : words) {
+                if (word.size() != length) continue;
+                bool valid = true;
+                for (std::size_t i = 0; i < length; ++i) {
+                    const auto* allowed = HanziMapEngine::instance().lookup_all(readings[i]);
+                    valid &= allowed && std::find(allowed->begin(), allowed->end(), word[i]) != allowed->end();
+                }
+                if (valid) span.words.push_back(word);
+            }
+            if (!span.words.empty()) {
+                std::erase(span.words, current);
+                span.words.insert(span.words.begin(), current);
+            }
+        }
+        if (span.words.empty()) return std::nullopt;
+        return span;
+    }
+
+    struct CandidateChoice {
+        CandidateSpan span;
+        std::u32string word;
+    };
+
+    std::vector<CandidateChoice> candidate_choices() const {
+        std::vector<CandidateChoice> choices;
+        // Each choice carries its own length: no manual character-count setting.
+        for (std::size_t length = std::min<std::size_t>(8, buffer.size()); length > 0; --length) {
+            const auto span = candidate_span(length);
+            if (!span) continue;
+            for (const auto& word : span->words) choices.push_back({*span, word});
+        }
+        return choices;
+    }
+
+    std::vector<std::u16string> candidate_readings(const CandidateSpan& span) const {
+        std::vector<std::u16string> readings;
+        if (span.start + span.length > buffer.size()) return readings;
+        for (std::size_t i = span.start; i < span.start + span.length; ++i) {
+            readings.push_back(buffer[i].to_bopomofo_string());
+        }
+        return readings;
+    }
+
+    bool choose_phrase(const CandidateSpan& span, std::u32string_view word) {
+        if (word.size() != span.length || span.start + span.length > buffer.size() ||
+            std::find(span.words.begin(), span.words.end(), word) == span.words.end()) return false;
+        for (std::size_t i = 0; i < span.length; ++i) {
+            buffer[span.start + i].choose_candidate(word[i]);
+            buffer[span.start + i].manually_selected = true;
+        }
+        idx = static_cast<int>(span.start + span.length) - 1;
+        return true;
+    }
+
     bool pre() {
         if (idx < 0) return false;
         idx--;
@@ -212,7 +296,7 @@ public:
         return true;
     }
     BopomofoPos& cur() {
-        if (idx < 0 || idx >= buffer.size()) {
+        if (idx < 0 || idx >= static_cast<int>(buffer.size())) {
             throw std::runtime_error("out of range");
         }
         return buffer[idx];
