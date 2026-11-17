@@ -1,5 +1,4 @@
 #pragma once
-#include "../../../shared/candidate_policy.hpp"
 #include <sqlite3.h>
 #include <algorithm>
 #include <cstdint>
@@ -85,9 +84,6 @@ public:
         }
         sqlite3_finalize(query);
         std::sort(matches.begin(), matches.end(), [](const Match& left, const Match& right) {
-            const bool left_traditional = linguistic::is_traditional_word(left.word);
-            const bool right_traditional = linguistic::is_traditional_word(right.word);
-            if (left_traditional != right_traditional) return left_traditional;
             return left.revision > right.revision;
         });
         return matches;
