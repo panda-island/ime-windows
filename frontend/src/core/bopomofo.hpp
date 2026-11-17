@@ -8,7 +8,6 @@
 #include <optional>
 #include <span>
 #include "phrase_lexicon.hpp"
-#include "traditional_characters.hpp"
 #include <source_location>
 #include <string>
 #include <unordered_map>
@@ -262,7 +261,7 @@ private:
                 wvec.push_back(hanzi);
                 hanzi_set.insert(hanzi);
             }
-            if (!wvec.empty()) mapping[key] = traditional_first_candidates(wvec);
+            mapping[key] = std::move(wvec);
         }
         auto phrase_file = mapping_file.parent_path() / "phrases.tsv";
         if (!std::filesystem::exists(phrase_file)) {
@@ -408,22 +407,14 @@ public:
                 }
             }
         }
-        return traditional_first_candidates(result);
+        return result;
     }
     bool was_manually_selected() const noexcept {
         return manually_selected;
     }
     void set_candaiates(const std::vector<char32_t>& nc) {
-        std::vector<char32_t> combined(nc);
-        // A model with incomplete token coverage must not put a simplified
-        // character ahead of a traditional alternative in the local table.
-        if (const auto* local = HanziMapEngine::instance().lookup_all(to_bopomofo_string())) {
-            combined.insert(combined.end(), local->begin(), local->end());
-        } else {
-            combined.insert(combined.end(), candidates.begin(), candidates.end());
-        }
-        if (!combined.empty()) {
-            candidates = traditional_first_candidates(combined);
+        if (!nc.empty()) {
+            candidates = nc;
             choose_index = 0;
         }
     }

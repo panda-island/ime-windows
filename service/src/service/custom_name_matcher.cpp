@@ -1,5 +1,4 @@
 #include "custom_name_matcher.hpp"
-#include "../../../shared/candidate_policy.hpp"
 
 #include <algorithm>
 #include <queue>
@@ -74,10 +73,8 @@ std::vector<std::optional<char32_t>> CustomNameMatcher::apply(
         const auto& matched = automaton->rules[*best_matches[start]];
         for (std::size_t offset = 0; offset < matched.characters.size(); ++offset) {
             auto& entry = padding[start + offset];
-            if (linguistic::is_traditional_character(matched.characters[offset])) {
-                entry.chosen = true;
-                entry.chosen_char = matched.characters[offset];
-            }
+            entry.chosen = true;
+            entry.chosen_char = matched.characters[offset];
             replacements[start + offset] = matched.characters[offset];
         }
         start += matched.characters.size();

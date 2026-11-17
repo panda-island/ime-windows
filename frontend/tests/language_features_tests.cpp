@@ -1,6 +1,5 @@
 #include "core/buffer.hpp"
 #include "../../service/src/service/selection_memory.hpp"
-#include "../../service/src/service/traditional_output.hpp"
 #include "../../service/src/service/custom_name_matcher.hpp"
 #include <filesystem>
 #include <fstream>
@@ -16,19 +15,9 @@ void run_tests(const std::filesystem::path& folder) {
     std::ofstream(folder / "phrases.tsv") << "ㄋㄧˇ|ㄏㄠˇ\t你好\t妳好\n"
         "ㄕㄥˋ|ㄊㄧˇ\t圣体\t聖體\nㄕㄥˋ|ㄊㄧˇ|ㄅㄨˋ\t圣体不\nㄑㄩㄣˊ|ㄗㄨˇ\t群組\n";
     SetEnvironmentVariableW(L"LLAVON_IME_TABLES_DIR", folder.wstring().c_str());
-    require(!tsf::is_traditional_character(U'国'), "simplified-only character allowed");
-    require(tsf::is_traditional_character(U'國'), "traditional character excluded");
-    require(tsf::is_traditional_character(U'后'), "shared traditional character excluded");
-    for (const auto character : std::u32string_view(U"群峰床灶痴粽么")) {
-        require(tsf::is_traditional_character(character) && tsf::to_traditional_character(character) == character,
-                "Taiwan traditional character was classified as simplified");
-    }
     tsf::CompositionBuffer group;
     for (const auto ch : std::u16string(u"ㄑㄩㄣˊ")) group.add(ch);
     require(group.to_string() == u"群", "Taiwan group character was converted or moved behind skirt");
-    const std::vector<std::pair<char32_t, float>> group_model{{U'群', 0.9F}, {U'裙', 0.8F}, {U'羣', 0.7F}};
-    require(llavon::service::traditional_response_candidates(group_model) ==
-            std::vector<char32_t>{U'群', U'裙', U'羣'}, "backend misclassified the Taiwan group character");
     const auto group_choices = group.candidate_choices();
     require(std::any_of(group_choices.begin(), group_choices.end(), [](const auto& choice) { return choice.word == U"群"; }) &&
             std::any_of(group_choices.begin(), group_choices.end(), [](const auto& choice) { return choice.word == U"裙"; }),
@@ -38,47 +27,18 @@ void run_tests(const std::filesystem::path& folder) {
     const auto group_span = group.candidate_span(2);
     require(group_span && group.choose_phrase(*group_span, U"群組") && group.to_string() == u"群組",
             "Taiwan group phrase could not be selected unchanged");
-    require(std::is_sorted(tsf::simplified_only.begin(), tsf::simplified_only.end()),
-            "generated simplified-character lookup is not sorted");
-    for (const auto character : tsf::simplified_only) {
-        const auto normalized = tsf::to_traditional_character(character);
-        require(tsf::is_traditional_character(normalized) &&
-                tsf::to_traditional_character(normalized) == normalized,
-                "conversion produced a simplified character or was not idempotent");
-    }
-    struct ScriptCase { char32_t simplified; char32_t traditional; std::u16string reading; };
-    const ScriptCase script_cases[] = {{U'圣', U'聖', u"ㄕㄥˋ"}, {U'体', U'體', u"ㄊㄧˇ"}};
-    for (const auto& entry : script_cases) {
-        require(!tsf::is_traditional_character(entry.simplified) &&
-                tsf::to_traditional_character(entry.simplified) == entry.traditional,
-                "reported simplified character was not converted");
-        tsf::BopomofoPos position;
-        for (const auto ch : entry.reading) position.accept(ch);
-        require(tsf::is_traditional_character(position.current32()) &&
-                std::find(position.get_candidates().begin(), position.get_candidates().end(), entry.simplified) !=
-                    position.get_candidates().end(), "local simplified alternative was lost or preferred");
-        position.set_candaiates({entry.simplified, entry.traditional});
-        require(position.current32() == entry.traditional && position.get_candidates().back() == entry.simplified,
-                "model ranking preferred simplified output or removed it");
-        position.set_candaiates({entry.simplified});
-        require(tsf::is_traditional_character(position.current32()),
-                "model token coverage hid the local traditional alternative");
-        position.choose_candidate(entry.simplified);
-        require(position.current32() == entry.simplified, "manual simplified choice was changed");
-        require(tsf::is_traditional_character(position.selection_candidates().front()) &&
-                position.selection_candidates().back() == entry.simplified,
-                "manual selection changed the script preference of the candidate list");
-        position.set_chosen_candidate(entry.simplified);
-        require(position.current32() == entry.simplified, "explicit fixed character was converted");
-        std::u16string expected;
-        utf8::append16(entry.simplified, expected);
-        require(position.current() == expected, "final UTF-16 output changed the selected character");
-    }
-    const std::vector<std::pair<char32_t, float>> legacy_candidates{
-        {U'圣', 0.9F}, {U'聖', 0.8F}, {U'体', 0.7F}, {U'體', 0.6F}, {U'勝', 0.5F}, {U'圣', 0.4F}};
-    require(llavon::service::traditional_response_candidates(legacy_candidates) ==
-            std::vector<char32_t>{U'聖', U'體', U'勝', U'圣', U'体'},
-            "legacy pipe response removed simplified candidates or did not prefer traditional output");
+    tsf::BopomofoPos predicted;
+    for (const auto ch : std::u16string(u"ㄕㄥˋ")) predicted.accept(ch);
+    require(predicted.get_candidates() == std::vector<char32_t>{U'圣', U'聖', U'勝'},
+            "local characters no longer follow dictionary order");
+    predicted.set_candaiates({U'聖', U'圣'});
+    require(predicted.get_candidates() == std::vector<char32_t>{U'聖', U'圣'},
+            "model candidates no longer follow model order");
+    require(predicted.selection_candidates() == std::vector<char32_t>{U'聖', U'圣', U'勝'},
+            "local alternatives did not follow the model candidates");
+    predicted.choose_candidate(U'圣');
+    require(predicted.current() == u"圣", "manually selected character changed spelling");
+
     llavon::service::CustomNameMatcher simplified_name({
         llavon::service::CustomNameSetting{U"圣体", {u"ㄕㄥˋ", u"ㄊㄧˇ"}}});
     std::vector<llavon::ime::core::PaddingEntry> name_padding{
@@ -86,43 +46,15 @@ void run_tests(const std::filesystem::path& folder) {
         {.chosen = false, .chosen_char = 0, .bopomofo = u"ㄊㄧˇ"}};
     const auto name_matches = simplified_name.apply(name_padding);
     require(name_matches[0] == U'圣' && name_matches[1] == U'体' &&
-            !name_padding[0].chosen && !name_padding[1].chosen,
-            "simplified custom name prevented traditional model alternatives");
-    std::vector<std::pair<char32_t, float>> name_candidates{{U'聖', 0.9F}};
-    llavon::service::apply_custom_name_candidate(name_candidates, *name_matches[0]);
-    require(llavon::service::traditional_response_candidates(name_candidates) ==
-            std::vector<char32_t>{U'聖', U'圣'}, "simplified custom name became the automatic first choice");
-    tsf::CompositionBuffer fixed_output;
-    fixed_output.add_chosen_candidate(U'圣');
-    fixed_output.add_chosen_candidate(U'体');
-    require(fixed_output.to_string() == u"圣体" && fixed_output.commit_sample({}).answer == u"圣体",
-            "composition or commit changed the explicit character choice");
-    require(tsf::HanziMapEngine::instance().lookup_all(u"ㄍㄨㄛˊ")->size() == 2,
-            "local simplified alternative was removed");
-    tsf::CompositionBuffer simplified_only;
-    for (const auto ch : std::u16string(u"ㄅㄧㄢˋ")) simplified_only.add(ch);
-    require(simplified_only.to_string() == u"变" && !simplified_only.current_invalid(),
-            "simplified-only reading became untypeable or was silently converted");
-    tsf::BopomofoPos predicted;
-    predicted.set_chosen_candidate(U'國');
-    predicted.set_candaiates({U'国'});
-    predicted.choose_candidate(U'国');
-    require(predicted.current32() == U'国', "manual simplified selection was not preserved");
-    tsf::BopomofoPos narrowed;
-    for (char16_t ch : std::u16string(u"ㄋㄧˇ")) narrowed.accept(ch);
-    narrowed.set_candaiates({U'你', U'拟'});
-    const auto alternatives = narrowed.selection_candidates();
-    require(std::find(alternatives.begin(), alternatives.end(), U'妳') != alternatives.end(),
-            "model token coverage removed a local manual alternative");
-    require(alternatives == std::vector<char32_t>{U'你', U'妳', U'拟'},
-            "simplified model alternative was removed or placed ahead of traditional alternatives");
+            name_padding[0].chosen && name_padding[0].chosen_char == U'圣' &&
+            name_padding[1].chosen && name_padding[1].chosen_char == U'体',
+            "custom name did not use the configured characters");
     tsf::CompositionBuffer mixed_phrases;
     for (const auto ch : std::u16string(u"ㄕㄥˋㄊㄧˇㄅㄨˋ")) mixed_phrases.add(ch);
     require(mixed_phrases.set_caret_offset(0), "mixed phrase caret positioning failed");
     const auto mixed_choices = mixed_phrases.candidate_choices();
-    require(std::is_partitioned(mixed_choices.begin(), mixed_choices.end(), [](const auto& choice) {
-                return tsf::is_traditional_word(choice.word);
-            }), "a longer simplified phrase preceded traditional candidates");
+    require(!mixed_choices.empty() && mixed_choices.front().word == U"圣体不",
+            "longer phrase was displaced by a script preference");
     const auto simple_phrase = std::find_if(mixed_choices.begin(), mixed_choices.end(), [](const auto& choice) {
         return choice.word == U"圣体";
     });
@@ -203,12 +135,8 @@ void run_tests(const std::filesystem::path& folder) {
         require(memory.remember(u"ㄊㄧˇ", U"體") &&
                 memory.remember(tsf::PhraseLexicon::key(reported), U"圣体"), "mixed-script preferences were not saved");
         const auto mixed_memory = memory.recall(reported);
-        require(mixed_memory.size() == 2 && mixed_memory.front().word == U"體" &&
-                mixed_memory.back().word == U"圣体", "newer simplified memory displaced a traditional preference");
-        const std::vector<std::pair<char32_t, float>> remembered_candidates{
-            {mixed_memory.back().word.front(), 1.0F}, {U'聖', 0.5F}};
-        require(llavon::service::traditional_response_candidates(remembered_candidates) ==
-                std::vector<char32_t>{U'聖', U'圣'}, "remembered simplified choice became the default");
+        require(mixed_memory.size() == 2 && mixed_memory.front().word == U"圣体" &&
+                mixed_memory.back().word == U"體", "memory did not follow most recently selected order");
     }
     // Seed an old database directly, before the normalization path existed.
     sqlite3* legacy = nullptr;
@@ -229,8 +157,8 @@ void run_tests(const std::filesystem::path& folder) {
     llavon::service::SelectionMemory upgraded(database);
     const std::vector<std::u16string> reported{u"ㄕㄥˋ", u"ㄊㄧˇ"};
     const auto recovered = upgraded.recall(reported);
-    require(recovered.size() == 2 && recovered.front().word == U"體" && recovered.back().word == U"圣体",
-            "old simplified memory was changed or prioritized ahead of traditional memory");
+    require(recovered.size() == 2 && recovered.front().word == U"圣体" && recovered.back().word == U"體",
+            "persisted selections did not retain their spelling and recency");
 }
 
 void dictionary_tests(const std::filesystem::path& folder, const char* mapping, const char* phrases) {
@@ -254,20 +182,12 @@ void dictionary_tests(const std::filesystem::path& folder, const char* mapping, 
     }
     std::ifstream original(folder / "bopomofo_char.json");
     const auto source = rfl::json::read<std::unordered_map<std::string, std::vector<std::string>>>(original).value();
-    std::size_t restored = 0;
     for (const auto& [reading, characters] : source) {
+        std::vector<char32_t> expected;
+        for (const auto& text : characters) expected.push_back(utf8::utf8to32(text).front());
         const auto* candidates = tsf::HanziMapEngine::instance().lookup_all(utf8::utf8to16(reading));
-        require(candidates && !candidates->empty(), "an original reading disappeared from the packaged table");
-        require(std::is_partitioned(candidates->begin(), candidates->end(), tsf::is_traditional_character),
-                "packaged character candidates did not prefer traditional characters");
-        for (const auto& text : characters) {
-            const auto character = utf8::utf8to32(text).front();
-            require(std::find(candidates->begin(), candidates->end(), character) != candidates->end(),
-                    "original dictionary character is missing from candidates");
-            if (!tsf::is_traditional_character(character)) ++restored;
-        }
+        require(candidates && *candidates == expected, "packaged candidates differ from the original character table");
     }
-    require(restored > 0, "real dictionary did not restore simplified alternatives");
 }
 }
 int main(int argc, char** argv) {

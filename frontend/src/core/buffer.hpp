@@ -98,9 +98,6 @@ public:
             }
         }
         if (span.words.empty()) return std::nullopt;
-        std::stable_partition(span.words.begin(), span.words.end(), [](const auto& word) {
-            return is_traditional_word(word);
-        });
         return span;
     }
 
@@ -117,9 +114,6 @@ public:
             if (!span) continue;
             for (const auto& word : span->words) choices.push_back({*span, word});
         }
-        std::stable_partition(choices.begin(), choices.end(), [](const auto& choice) {
-            return is_traditional_word(choice.word);
-        });
         return choices;
     }
 

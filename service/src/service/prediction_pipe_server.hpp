@@ -30,7 +30,6 @@
 #include "gpu_latency_boost.hpp"
 #include "training_data_writer.hpp"
 #include "selection_memory.hpp"
-#include "traditional_output.hpp"
 
 namespace llavon::service {
 
@@ -269,10 +268,9 @@ inline asio::awaitable<void> write_response(asio::windows::stream_handle& pipe,
     if (!co_await write_val(pipe, count)) co_return;
 
     for (auto& r : results) {
-        const auto candidates = traditional_response_candidates(r.candidates);
-        uint32_t nc = static_cast<uint32_t>(candidates.size());
+        uint32_t nc = static_cast<uint32_t>(r.candidates.size());
         if (!co_await write_val(pipe, nc)) co_return;
-        for (const auto c : candidates) {
+        for (const auto& [c, probability] : r.candidates) {
             if (!co_await write_val(pipe, c)) co_return;
         }
     }
@@ -610,7 +608,7 @@ inline asio::awaitable<void> handle_client(
             for (std::size_t index = 0;
                  index < results.size() && index < custom_name_replacements.size(); ++index) {
                 if (custom_name_replacements[index]) {
-                    apply_custom_name_candidate(results[index].candidates, *custom_name_replacements[index]);
+                    results[index].candidates = {{*custom_name_replacements[index], 1.0F}};
                 }
             }
             std::vector<bool> used(results.size(), false);
